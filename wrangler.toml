@@ -1,0 +1,7 @@
+name = "rp-italsem"
+compatibility_date = "2026-02-05"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rp_italsem"
+database_id = "759e0186-895f-4f26-a14e-6247f01adfa7"
