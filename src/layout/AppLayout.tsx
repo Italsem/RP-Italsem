@@ -1,28 +1,52 @@
-import { Outlet, Link } from "react-router-dom";
+import { Outlet, Link, useNavigate } from "react-router-dom";
 
 export default function AppLayout() {
+  const navigate = useNavigate();
+
+  function handleLogout() {
+    // (poi lo collegheremo all’API)
+    navigate("/login");
+  }
+
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div className="min-h-screen bg-brand-white text-brand-black">
+      {/* HEADER BIANCO */}
+      <header className="bg-brand-white border-b border-black/10">
+        <div className="w-full px-6 py-4 flex items-center justify-between">
+          {/* Logo + titolo */}
           <Link to="/dashboard" className="flex items-center gap-3">
-            <img src="/logo.png" alt="RP-Italsem" className="h-10" />
-            <div>
-              <div className="font-bold leading-5">RP-Italsem</div>
-              <div className="text-xs text-gray-500">Rapportini & Presenze</div>
+            <img
+              src="/logo.png"
+              alt="RP-Italsem"
+              className="h-10 w-auto"
+            />
+            <div className="leading-tight">
+              <div className="font-extrabold text-lg tracking-wide">
+                RP-Italsem
+              </div>
+              <div className="text-xs text-black/60">
+                Rapportini & Presenze
+              </div>
             </div>
           </Link>
 
+          {/* Azioni utente */}
           <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-600">👤 Utente</span>
-            <button className="px-3 py-1.5 rounded-lg bg-gray-900 text-white text-sm">
+            <span className="hidden sm:inline text-sm text-black/60">
+              👤 Utente
+            </span>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 rounded-lg bg-brand-orange text-brand-white font-bold hover:opacity-90 transition"
+            >
               Logout
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
+      {/* CONTENUTO FULL WIDTH */}
+      <main className="w-full px-6 py-6">
         <Outlet />
       </main>
     </div>
