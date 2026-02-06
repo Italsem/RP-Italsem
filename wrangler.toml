@@ -1,6 +1,9 @@
 name = "rp-italsem"
 compatibility_date = "2026-02-05"
 
+# Serve solo per far capire a Pages dove esce la build
+pages_build_output_dir = "dist"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "rp_italsem"
