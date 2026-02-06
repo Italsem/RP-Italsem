@@ -1,28 +1,18 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { login } from "../lib/auth";
 
 export default function Login() {
-  const nav = useNavigate();
   const loc = useLocation() as any;
-
-import { useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { login } from "../lib/auth";
-
-export default function Login() {
-  const nav = useNavigate();
-  const loc = useLocation() as any;
-
   const from = useMemo(() => loc?.state?.from ?? "/dashboard", [loc]);
 
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErr(null);
     setLoading(true);
@@ -30,11 +20,10 @@ export default function Login() {
     try {
       await login(username.trim(), password);
 
-      // 🔥 FORZIAMO redirect e refresh stato
+      // Forza refresh pagina così RequireAuth rilegge /api/auth/me
       window.location.href = from;
     } catch {
       setErr("Credenziali non valide");
-    } finally {
       setLoading(false);
     }
   }
