@@ -3,13 +3,13 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   salt TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'USER',   -- ADMIN | USER
+  role TEXT NOT NULL DEFAULT 'USER',
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY,                -- uuid
+  id TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL,
   expires_at TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now')),

@@ -9,23 +9,11 @@ export default function RequireAuth({ children }: { children: ReactNode }) {
   const loc = useLocation();
 
   useEffect(() => {
-    me()
-      .then((u) => setUser(u))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
+    me().then(setUser).catch(() => setUser(null)).finally(() => setLoading(false));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-sm text-black/60">Caricamento...</div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-black/60">Caricamento...</div>;
+  if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
 
   return <>{children}</>;
 }

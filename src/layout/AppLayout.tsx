@@ -1,39 +1,36 @@
-import { Outlet, Link, useNavigate } from "react-router-dom";
+import { Outlet, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { logout, me, type User } from "../lib/auth";
 
 export default function AppLayout() {
-  const navigate = useNavigate();
+  const [user, setUser] = useState<User | null>(null);
 
-  function handleLogout() {
-    // (poi lo collegheremo all’API)
-    navigate("/login");
+  useEffect(() => {
+    me().then(setUser).catch(() => setUser(null));
+  }, []);
+
+  async function handleLogout() {
+    await logout();
+    window.location.href = "/login";
   }
+
+  const fullName = user ? `${user.firstName} ${user.lastName}`.trim() : "Utente";
 
   return (
     <div className="min-h-screen bg-brand-white text-brand-black">
-      {/* HEADER BIANCO */}
       <header className="bg-brand-white border-b border-black/10">
         <div className="w-full px-6 py-4 flex items-center justify-between">
-          {/* Logo + titolo */}
           <Link to="/dashboard" className="flex items-center gap-3">
-            <img
-              src="/logo.png"
-              alt="RP-Italsem"
-              className="h-10 w-auto"
-            />
+            <img src="/logo.png" alt="RP-Italsem" className="h-10 w-auto" />
             <div className="leading-tight">
-              <div className="font-extrabold text-lg tracking-wide">
-                RP-Italsem
-              </div>
-              <div className="text-xs text-black/60">
-                Rapportini & Presenze
-              </div>
+              <div className="font-extrabold text-lg tracking-wide">RP-Italsem</div>
+              <div className="text-xs text-black/60">Rapportini & Presenze</div>
             </div>
           </Link>
 
-          {/* Azioni utente */}
           <div className="flex items-center gap-3">
             <span className="hidden sm:inline text-sm text-black/60">
-              👤 Utente
+              👤 {fullName}
             </span>
             <button
               onClick={handleLogout}
@@ -45,7 +42,6 @@ export default function AppLayout() {
         </div>
       </header>
 
-      {/* CONTENUTO FULL WIDTH */}
       <main className="w-full px-6 py-6">
         <Outlet />
       </main>

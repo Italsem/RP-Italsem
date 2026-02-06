@@ -1,6 +1,12 @@
 import { apiGet, apiPost } from "./api";
 
-export type User = { id: number; username: string; role: "ADMIN" | "USER" };
+export type User = {
+  id: number;
+  username: string;
+  role: "ADMIN" | "USER";
+  firstName: string;
+  lastName: string;
+};
 
 export async function me(): Promise<User> {
   return apiGet<User>("/api/auth/me");

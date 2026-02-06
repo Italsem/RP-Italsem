@@ -19,8 +19,6 @@ export default function Login() {
 
     try {
       await login(username.trim(), password);
-
-      // Forza refresh pagina così RequireAuth rilegge /api/auth/me
       window.location.href = from;
     } catch {
       setErr("Credenziali non valide");
@@ -33,12 +31,8 @@ export default function Login() {
       <div className="w-full max-w-md border border-black/10 rounded-2xl p-8 shadow-lg bg-white">
         <img src="/logo.png" alt="RP-Italsem" className="h-14 mx-auto mb-4" />
 
-        <h1 className="text-2xl font-extrabold text-center mb-1">
-          Accesso RP-Italsem
-        </h1>
-        <p className="text-sm text-center text-black/60 mb-8">
-          Inserisci le credenziali per continuare
-        </p>
+        <h1 className="text-2xl font-extrabold text-center mb-1">Accesso RP-Italsem</h1>
+        <p className="text-sm text-center text-black/60 mb-8">Inserisci le credenziali per continuare</p>
 
         <form onSubmit={onSubmit}>
           <label className="block text-sm font-semibold mb-1">Username</label>
@@ -46,7 +40,6 @@ export default function Login() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             className="w-full border border-black/15 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-brand-orange"
-            placeholder="es. admin"
             autoComplete="username"
           />
 
@@ -56,15 +49,10 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             type="password"
             className="w-full border border-black/15 rounded-lg px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-brand-orange"
-            placeholder="••••••••"
             autoComplete="current-password"
           />
 
-          {err && (
-            <div className="text-sm text-red-600 font-semibold mb-3">
-              {err}
-            </div>
-          )}
+          {err && <div className="text-sm text-red-600 font-semibold mb-3">{err}</div>}
 
           <button
             disabled={loading}

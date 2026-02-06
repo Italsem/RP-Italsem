@@ -7,6 +7,8 @@ import AppLayout from "./layout/AppLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Admin from "./pages/Admin";
+import Inserimento from "./pages/Inserimento";
+import ExportPage from "./pages/ExportPage";
 
 import RequireAuth from "./components/RequireAuth";
 import RequireAdmin from "./components/RequireAdmin";
@@ -26,6 +28,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         >
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/inserimento" element={<Inserimento />} />
+          <Route path="/export" element={<ExportPage />} />
 
           <Route
             path="/admin"

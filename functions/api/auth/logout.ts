@@ -15,7 +15,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   return new Response(JSON.stringify({ ok: true }), {
     headers: {
       "Content-Type": "application/json",
-      "Set-Cookie": clearSessionCookie(),
+      "Set-Cookie": clearSessionCookie(ctx.request),
     },
   });
 };

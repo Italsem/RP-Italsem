@@ -8,10 +8,7 @@ export default function RequireAdmin({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    me()
-      .then((u) => setUser(u))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
+    me().then(setUser).catch(() => setUser(null)).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="p-6 text-sm text-black/60">Caricamento...</div>;
@@ -20,3 +17,4 @@ export default function RequireAdmin({ children }: { children: ReactNode }) {
 
   return <>{children}</>;
 }
+

@@ -1,9 +1,5 @@
 import { setSessionCookie } from "../_auth";
 
-/**
- * Hash stabile e compatibile ovunque:
- * SHA-256( salt + ":" + password )
- */
 async function sha256Hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -16,7 +12,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   if (!username || !password) return new Response("Missing credentials", { status: 400 });
 
   const u = await ctx.env.DB.prepare(
-    "SELECT id, username, password_hash, salt, role, is_active FROM users WHERE username = ?"
+    "SELECT id, username, password_hash, salt, role, is_active, first_name, last_name FROM users WHERE username = ?"
   ).bind(username).first<any>();
 
   if (!u || u.is_active !== 1) return new Response("Unauthorized", { status: 401 });
@@ -31,10 +27,22 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
     "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, datetime('now', ?))"
   ).bind(sid, u.id, `+${maxAge} seconds`).run();
 
-  return new Response(JSON.stringify({ ok: true, user: { id: u.id, username: u.username, role: u.role } }), {
-    headers: {
-      "Content-Type": "application/json",
-      "Set-Cookie": setSessionCookie(ctx.request, sid, maxAge),
-    },
-  });
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      user: {
+        id: u.id,
+        username: u.username,
+        role: u.role,
+        firstName: u.first_name ?? "",
+        lastName: u.last_name ?? "",
+      },
+    }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": setSessionCookie(ctx.request, sid, maxAge),
+      },
+    }
+  );
 };
