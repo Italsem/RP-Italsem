@@ -1,4 +1,4 @@
-ffunction parseCookies(cookieHeader: string | null) {
+function parseCookies(cookieHeader: string | null) {
   const out: Record<string, string> = {};
   if (!cookieHeader) return out;
 
@@ -26,7 +26,7 @@ export async function getUser(ctx: { request: Request; env: { DB: D1Database } }
   return u ?? null;
 }
 
-// Cookie super-compatibile (non viene bloccato)
+// Cookie compatibile (su Pages sei in HTTPS quindi Secure va bene)
 export function setSessionCookie(_req: Request, sid: string, maxAgeSeconds: number) {
   return `sid=${encodeURIComponent(sid)}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${maxAgeSeconds}`;
 }
