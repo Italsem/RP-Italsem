@@ -1,4 +1,4 @@
-function parseCookies(cookieHeader: string | null) {
+ffunction parseCookies(cookieHeader: string | null) {
   const out: Record<string, string> = {};
   if (!cookieHeader) return out;
 
@@ -26,11 +26,11 @@ export async function getUser(ctx: { request: Request; env: { DB: D1Database } }
   return u ?? null;
 }
 
-export function setSessionCookie(sid: string, maxAgeSeconds: number) {
-  // SameSite=Lax ok per app gestionale
-  return `sid=${encodeURIComponent(sid)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAgeSeconds}`;
+// Cookie super-compatibile (non viene bloccato)
+export function setSessionCookie(_req: Request, sid: string, maxAgeSeconds: number) {
+  return `sid=${encodeURIComponent(sid)}; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=${maxAgeSeconds}`;
 }
 
-export function clearSessionCookie() {
-  return `sid=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
+export function clearSessionCookie(_req: Request) {
+  return `sid=; HttpOnly; Secure; SameSite=None; Path=/; Max-Age=0`;
 }
