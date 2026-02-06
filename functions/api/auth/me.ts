@@ -1,15 +1,7 @@
-export const onRequestGet: PagesFunction = async () => {
-  return new Response(
-    JSON.stringify({
-      id: 1,
-      username: "admin",
-      role: "ADMIN",
-      first_name: "Luca",
-      last_name: "Franceschetti",
-    }),
-    {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }
-  );
+import { getUser } from "../_auth";
+
+export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
+  const u = await getUser(ctx);
+  if (!u) return new Response("Unauthorized", { status: 401 });
+  return Response.json(u);
 };

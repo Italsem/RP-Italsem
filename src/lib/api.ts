@@ -1,8 +1,5 @@
 export async function apiGet<T>(path: string): Promise<T> {
-  const r = await fetch(path, {
-    method: "GET",
-    credentials: "include"
-  });
+  const r = await fetch(path, { credentials: "include" });
   if (!r.ok) throw new Error(await r.text());
   return (await r.json()) as T;
 }
@@ -12,7 +9,7 @@ export async function apiPost<T>(path: string, body?: any): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: body ? JSON.stringify(body) : undefined
+    body: body ? JSON.stringify(body) : undefined,
   });
   if (!r.ok) throw new Error(await r.text());
   const txt = await r.text();
