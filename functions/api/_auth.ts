@@ -1,0 +1,36 @@
+function parseCookies(cookieHeader: string | null) {
+  const out: Record<string, string> = {};
+  if (!cookieHeader) return out;
+
+  cookieHeader.split(";").forEach((part) => {
+    const [k, ...v] = part.trim().split("=");
+    out[k] = decodeURIComponent(v.join("="));
+  });
+  return out;
+}
+
+export async function getUser(ctx: { request: Request; env: { DB: D1Database } }) {
+  const cookies = parseCookies(ctx.request.headers.get("Cookie"));
+  const sid = cookies["sid"];
+  if (!sid) return null;
+
+  const u = await ctx.env.DB.prepare(
+    `SELECT u.id, u.username, u.role
+     FROM sessions s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.id = ?
+       AND u.is_active = 1
+       AND s.expires_at > datetime('now')`
+  ).bind(sid).first();
+
+  return u ?? null;
+}
+
+export function setSessionCookie(sid: string, maxAgeSeconds: number) {
+  // SameSite=Lax ok per app gestionale
+  return `sid=${encodeURIComponent(sid)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAgeSeconds}`;
+}
+
+export function clearSessionCookie() {
+  return `sid=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
+}
