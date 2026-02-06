@@ -64,3 +64,7 @@ export async function createSession(ctx: any, userId: number) {
     },
   });
 }
+export function unauthorized(message = "Unauthorized") {
+  return json({ error: message }, { status: 401 });
+}
+
