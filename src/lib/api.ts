@@ -1,16 +1,20 @@
-export async function apiGet<T>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+export async function apiGet<T>(path: string): Promise<T> {
+  const r = await fetch(path, {
+    method: "GET",
+    credentials: "include"
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return (await r.json()) as T;
 }
 
-export async function apiPost<T>(url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, {
+export async function apiPost<T>(path: string, body?: any): Promise<T> {
+  const r = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: body ? JSON.stringify(body) : "{}",
+    body: body ? JSON.stringify(body) : undefined
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  if (!r.ok) throw new Error(await r.text());
+  const txt = await r.text();
+  return (txt ? JSON.parse(txt) : ({} as any)) as T;
 }
