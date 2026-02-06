@@ -1,122 +1,224 @@
-import { useState } from "react";
-import * as XLSX from "xlsx";
-import { apiPost } from "../lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { apiGet, apiPost } from "../lib/api";
 
-type ImportKind = "cantieri" | "mezzi" | "dipendenti";
-
-function readFirstSheetRows(file: File) {
-  return new Promise<any[]>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Errore lettura file"));
-    reader.onload = () => {
-      try {
-        const data = new Uint8Array(reader.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
-        resolve(json as any[]);
-      } catch (e) {
-        reject(e);
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  });
-}
+type UserRow = {
+  id: number;
+  username: string;
+  role: "ADMIN" | "USER";
+  is_active: number;
+  created_at?: string;
+  first_name?: string | null;
+  last_name?: string | null;
+};
 
 export default function Admin() {
-  const [status, setStatus] = useState<string>("");
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState<string | null>(null);
 
-  async function handleImport(kind: ImportKind, file: File | null) {
-    if (!file) return;
+  // form create user/admin
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"USER" | "ADMIN">("USER");
 
+  async function load() {
+    setLoading(true);
+    setMsg(null);
     try {
-      setStatus(`Leggo Excel (${kind})...`);
-      const rows = await readFirstSheetRows(file);
-
-      setStatus(`Invio ${rows.length} righe al server (${kind})...`);
-      const res = await apiPost<{ ok: boolean; inserted: number }>(
-        `/api/admin/import/${kind}`,
-        { rows }
-      );
-
-      setStatus(`✅ Import ${kind} completato: ${res.inserted} righe inserite/aggiornate`);
+      const r = await apiGet("/api/admin/users");
+      setUsers(r.users || []);
     } catch (e: any) {
-      console.error(e);
-      setStatus(`❌ Errore import ${kind}: ${String(e?.message ?? e)}`);
+      setMsg(e?.message || "Errore caricamento utenti");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const sorted = useMemo(() => {
+    return [...users].sort((a, b) => b.id - a.id);
+  }, [users]);
+
+  async function onCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    try {
+      await apiPost("/api/admin/users", {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        username: username.trim(),
+        password,
+        role,
+      });
+
+      setFirstName("");
+      setLastName("");
+      setUsername("");
+      setPassword("");
+      setRole("USER");
+
+      setMsg("✅ Utente creato!");
+      await load();
+    } catch (err: any) {
+      setMsg(err?.message || "Errore creazione utente");
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <div className="rounded-2xl bg-white p-6 shadow-sm border">
-          <h1 className="text-2xl font-bold">Admin Panel</h1>
-          <p className="text-slate-600 mt-1">
-            Carica gli Excel per popolare il database (cantieri, mezzi, dipendenti).
-          </p>
+    <div className="max-w-6xl mx-auto px-4 py-6">
+      <h1 className="text-2xl font-bold">Admin Panel</h1>
+      <p className="text-sm text-slate-600 mt-1">
+        Qui puoi creare utenti/admin. (Liste cantieri/mezzi/dipendenti: le rimettiamo subito dopo, appena stabilizziamo il deploy.)
+      </p>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <ImportCard
-              title="Import Cantieri"
-              subtitle="Excel con colonne: Codice, Descrizione"
-              onImport={(f) => handleImport("cantieri", f)}
-            />
-            <ImportCard
-              title="Import Mezzi"
-              subtitle="Excel con colonne: Codice, Descrizione"
-              onImport={(f) => handleImport("mezzi", f)}
-            />
-            <ImportCard
-              title="Import Dipendenti"
-              subtitle="Excel con colonne: Codice, Nome, Cognome, Descrizione"
-              onImport={(f) => handleImport("dipendenti", f)}
-            />
+      {msg && (
+        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-sm">
+          {msg}
+        </div>
+      )}
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {/* CREATE USER */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-semibold">Crea nuovo utente / admin</h2>
+
+          <form className="mt-4 grid gap-3" onSubmit={onCreate}>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div>
+                <label className="text-sm font-medium">Nome</label>
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="es. Luca"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Cognome</label>
+                <input
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="es. Franceschetti"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Username</label>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="es. luca"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Password</label>
+              <input
+                type="password"
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="min 6 caratteri"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Ruolo</label>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
+                value={role}
+                onChange={(e) => setRole(e.target.value === "ADMIN" ? "ADMIN" : "USER")}
+              >
+                <option value="USER">USER</option>
+                <option value="ADMIN">ADMIN</option>
+              </select>
+            </div>
+
+            <button
+              className="mt-2 rounded-lg bg-orange-500 px-4 py-2 font-semibold text-white hover:bg-orange-600"
+              type="submit"
+            >
+              Crea
+            </button>
+          </form>
+        </div>
+
+        {/* USERS LIST */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Utenti</h2>
+            <button
+              onClick={load}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
+            >
+              Aggiorna
+            </button>
           </div>
 
-          <div className="mt-6 rounded-xl border bg-slate-50 p-4 text-sm">
-            <div className="font-semibold">Stato</div>
-            <div className="mt-1 text-slate-700 whitespace-pre-wrap">{status || "—"}</div>
-          </div>
+          {loading ? (
+            <div className="mt-4 text-sm text-slate-600">Caricamento…</div>
+          ) : (
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-600">
+                    <th className="py-2 pr-3">ID</th>
+                    <th className="py-2 pr-3">Nome</th>
+                    <th className="py-2 pr-3">Username</th>
+                    <th className="py-2 pr-3">Ruolo</th>
+                    <th className="py-2 pr-3">Attivo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((u) => (
+                    <tr key={u.id} className="border-t border-slate-100">
+                      <td className="py-2 pr-3">{u.id}</td>
+                      <td className="py-2 pr-3">
+                        {(u.first_name || "") + " " + (u.last_name || "")}
+                      </td>
+                      <td className="py-2 pr-3">{u.username}</td>
+                      <td className="py-2 pr-3">
+                        <span
+                          className={
+                            u.role === "ADMIN"
+                              ? "rounded-full bg-black px-2 py-1 text-white"
+                              : "rounded-full bg-slate-100 px-2 py-1"
+                          }
+                        >
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3">{u.is_active ? "SI" : "NO"}</td>
+                    </tr>
+                  ))}
+                  {sorted.length === 0 && (
+                    <tr>
+                      <td className="py-3 text-slate-500" colSpan={5}>
+                        Nessun utente trovato.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-          <div className="mt-6 text-xs text-slate-500">
-            Nota: per ora l’auth è disabilitata (tutti admin). La rimettiamo dopo.
+          <div className="mt-4 text-xs text-slate-500">
+            Nota: ora le password vengono salvate **hashate** + salt.
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ImportCard({
-  title,
-  subtitle,
-  onImport,
-}: {
-  title: string;
-  subtitle: string;
-  onImport: (file: File | null) => void;
-}) {
-  const [file, setFile] = useState<File | null>(null);
-
-  return (
-    <div className="rounded-2xl border bg-white p-4">
-      <div className="font-semibold">{title}</div>
-      <div className="text-xs text-slate-600 mt-1">{subtitle}</div>
-
-      <input
-        className="mt-3 block w-full text-sm"
-        type="file"
-        accept=".xlsx,.xls"
-        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-      />
-
-      <button
-        className="mt-3 w-full rounded-xl bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600"
-        onClick={() => onImport(file)}
-        disabled={!file}
-      >
-        Importa
-      </button>
     </div>
   );
 }

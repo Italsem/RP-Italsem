@@ -1,50 +1,63 @@
-import { getUser, requireAdmin } from "../_auth";
+im// functions/api/admin/users.ts
+import { badRequest, hashPassword, json, requireAdmin } from "../_auth";
 
-async function sha256Hex(input: string): Promise<string> {
-  const enc = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  const arr = Array.from(new Uint8Array(buf));
-  return arr.map((b) => b.toString(16).padStart(2, "0")).join("");
+function randomSalt(): string {
+  // semplice + robusto
+  return crypto.randomUUID().replaceAll("-", "");
 }
 
-export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
-  const u = await getUser(ctx);
-  if (!requireAdmin(u)) return new Response("Forbidden", { status: 403 });
+export async function onRequestGet({ request, env }: any) {
+  try {
+    await requireAdmin(env, request);
 
-  const r = await ctx.env.DB.prepare(
-    `SELECT id, username, role, is_active, first_name, last_name, created_at
-     FROM users
-     ORDER BY id`
-  ).all();
+    const res = await env.DB.prepare(
+      `SELECT id, username, role, is_active, created_at, first_name, last_name
+       FROM users
+       ORDER BY id DESC`
+    ).all();
 
-  return Response.json(r.results ?? []);
-};
+    return json({ ok: true, users: res.results || [] });
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const status = msg === "FORBIDDEN" ? 403 : msg === "UNAUTHORIZED" ? 401 : 500;
+    return json({ ok: false, message: msg }, { status });
+  }
+}
 
-export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
-  const u = await getUser(ctx);
-  if (!requireAdmin(u)) return new Response("Forbidden", { status: 403 });
+export async function onRequestPost({ request, env }: any) {
+  try {
+    await requireAdmin(env, request);
 
-  const { first_name, last_name, username, password, role } = await ctx.request.json();
+    const body = await request.json().catch(() => ({}));
+    const first_name = String(body.first_name || "").trim();
+    const last_name = String(body.last_name || "").trim();
+    const username = String(body.username || "").trim();
+    const password = String(body.password || "");
+    const role = (String(body.role || "USER").toUpperCase() === "ADMIN" ? "ADMIN" : "USER") as
+      | "ADMIN"
+      | "USER";
 
-  if (!username || !password) return new Response("Missing fields", { status: 400 });
+    if (!username || !password) return badRequest("Username e password obbligatori");
+    if (username.length < 3) return badRequest("Username troppo corto (min 3)");
+    if (password.length < 6) return badRequest("Password troppo corta (min 6)");
 
-  const salt = crypto.randomUUID();
-  const password_hash = await sha256Hex(String(password) + salt); // ✅ formato: password + salt
-  const userRole = role === "ADMIN" ? "ADMIN" : "USER";
+    const existing = await env.DB.prepare(`SELECT id FROM users WHERE username = ?`).bind(username).first();
+    if (existing?.id) return badRequest("Username già esistente");
 
-  await ctx.env.DB.prepare(
-    `INSERT INTO users (username, password_hash, salt, role, is_active, first_name, last_name)
-     VALUES (?, ?, ?, ?, 1, ?, ?)`
-  )
-    .bind(
-      String(username).trim(),
-      password_hash,
-      salt,
-      userRole,
-      first_name ?? null,
-      last_name ?? null
+    const salt = randomSalt();
+    const password_hash = await hashPassword(password, salt);
+
+    await env.DB.prepare(
+      `INSERT INTO users (username, password_hash, salt, role, is_active, first_name, last_name)
+       VALUES (?, ?, ?, ?, 1, ?, ?)`
     )
-    .run();
+      .bind(username, password_hash, salt, role, first_name || null, last_name || null)
+      .run();
 
-  return Response.json({ ok: true });
-};
+    return json({ ok: true });
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const status = msg === "FORBIDDEN" ? 403 : msg === "UNAUTHORIZED" ? 401 : 500;
+    return json({ ok: false, message: msg }, { status });
+  }
+}
