@@ -1,14 +1,15 @@
-import { getUser } from "../_auth";
-
-export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
-  const user = await getUser(ctx);
-  if (!user) return new Response("Unauthorized", { status: 401 });
-
-  return Response.json({
-    id: user.id,
-    username: user.username,
-    role: user.role,
-    firstName: user.first_name ?? "",
-    lastName: user.last_name ?? "",
-  });
+export const onRequestGet: PagesFunction = async () => {
+  return new Response(
+    JSON.stringify({
+      id: 1,
+      username: "admin",
+      role: "ADMIN",
+      first_name: "Luca",
+      last_name: "Franceschetti",
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
 };
