@@ -1,7 +1,8 @@
+// functions/api/auth/me.ts
 import { getUser, json, unauthorized } from "../_auth";
 
-export const onRequestGet = async (ctx: any) => {
-  const u = await getUser(ctx);
+export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
+  const u = await getUser(ctx as any);
   if (!u) return unauthorized();
-  return json({ id: u.id, username: u.username, role: u.role });
+  return json({ ok: true, user: u });
 };
