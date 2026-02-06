@@ -21,13 +21,6 @@ function makeSessionId() {
   return crypto.randomUUID();
 }
 
-export async function sha256Hex(input: string): Promise<string> {
-  const enc = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  const arr = Array.from(new Uint8Array(buf));
-  return arr.map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
 export async function getUser(ctx: any): Promise<AuthedUser | null> {
   const cookies = parseCookies(ctx.request.headers.get("Cookie"));
   const sid = cookies["sid"];
@@ -58,10 +51,19 @@ export function requireAdmin(u: AuthedUser | null) {
 export async function createSession(ctx: any, u: AuthedUser) {
   const sid = makeSessionId();
 
-  await ctx.env.DB.prepare(
-    `INSERT INTO sessions (id, user_id, created_at)
-     VALUES (?, ?, datetime('now'))`
-  ).bind(sid, u.id).run();
+  // ✅ Fallback schema: prima prova con created_at, se fallisce inserisce solo id+user_id
+  try {
+    await ctx.env.DB.prepare(
+      `INSERT INTO sessions (id, user_id, created_at)
+       VALUES (?, ?, datetime('now'))`
+    ).bind(sid, u.id).run();
+  } catch (e) {
+    console.log("createSession fallback (no created_at)", e);
+    await ctx.env.DB.prepare(
+      `INSERT INTO sessions (id, user_id)
+       VALUES (?, ?)`
+    ).bind(sid, u.id).run();
+  }
 
   const headers = new Headers();
   headers.append(
@@ -72,8 +74,8 @@ export async function createSession(ctx: any, u: AuthedUser) {
   return new Response(JSON.stringify({ ok: true, user: u }), {
     status: 200,
     headers: {
-      ...Object.fromEntries(headers.entries()),
       "Content-Type": "application/json",
+      ...Object.fromEntries(headers.entries()),
     },
   });
 }
@@ -81,3 +83,4 @@ export async function createSession(ctx: any, u: AuthedUser) {
 export function clearSessionCookie() {
   return `sid=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`;
 }
+
