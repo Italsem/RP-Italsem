@@ -9,9 +9,8 @@ export type AuthedUser = {
 function parseCookies(cookieHeader: string | null) {
   const out: Record<string, string> = {};
   if (!cookieHeader) return out;
-  const parts = cookieHeader.split(";");
-  for (const p of parts) {
-    const [k, ...rest] = p.trim().split("=");
+  for (const part of cookieHeader.split(";")) {
+    const [k, ...rest] = part.trim().split("=");
     if (!k) continue;
     out[k] = decodeURIComponent(rest.join("=") || "");
   }
@@ -20,6 +19,13 @@ function parseCookies(cookieHeader: string | null) {
 
 function makeSessionId() {
   return crypto.randomUUID();
+}
+
+export async function sha256Hex(input: string): Promise<string> {
+  const enc = new TextEncoder().encode(input);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  const arr = Array.from(new Uint8Array(buf));
+  return arr.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 export async function getUser(ctx: any): Promise<AuthedUser | null> {
@@ -32,9 +38,7 @@ export async function getUser(ctx: any): Promise<AuthedUser | null> {
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.id = ?`
-  )
-    .bind(sid)
-    .first<any>();
+  ).bind(sid).first<any>();
 
   if (!session || !session.is_active) return null;
 
@@ -51,19 +55,13 @@ export function requireAdmin(u: AuthedUser | null) {
   return !!u && u.role === "ADMIN";
 }
 
-/**
- * Crea una sessione e setta cookie "sid"
- * - SameSite=None + Secure per funzionare su Pages in HTTPS
- */
 export async function createSession(ctx: any, u: AuthedUser) {
   const sid = makeSessionId();
 
   await ctx.env.DB.prepare(
     `INSERT INTO sessions (id, user_id, created_at)
      VALUES (?, ?, datetime('now'))`
-  )
-    .bind(sid, u.id)
-    .run();
+  ).bind(sid, u.id).run();
 
   const headers = new Headers();
   headers.append(
@@ -71,19 +69,13 @@ export async function createSession(ctx: any, u: AuthedUser) {
     `sid=${encodeURIComponent(sid)}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${60 * 60 * 24 * 14}`
   );
 
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      user: u,
-    }),
-    {
-      status: 200,
-      headers: {
-        ...Object.fromEntries(headers.entries()),
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  return new Response(JSON.stringify({ ok: true, user: u }), {
+    status: 200,
+    headers: {
+      ...Object.fromEntries(headers.entries()),
+      "Content-Type": "application/json",
+    },
+  });
 }
 
 export function clearSessionCookie() {

@@ -1,4 +1,4 @@
-import { createSession } from "../_auth";
+import { createSession, sha256Hex } from "../_auth";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   const { username, password } = await ctx.request.json();
@@ -7,14 +7,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
 
   const user = await ctx.env.DB.prepare(
     "SELECT id, username, password_hash, role, is_active, first_name, last_name FROM users WHERE username = ?"
-  )
-    .bind(username)
-    .first<any>();
+  ).bind(username).first<any>();
 
   if (!user || !user.is_active) return new Response("Invalid credentials", { status: 401 });
 
-  // v1: password_hash è la password in chiaro (poi la mettiamo hashata)
-  if (String(user.password_hash) !== String(password)) {
+  const candidate = await sha256Hex(String(password));
+  if (String(user.password_hash) !== candidate) {
     return new Response("Invalid credentials", { status: 401 });
   }
 
