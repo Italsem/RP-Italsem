@@ -1,274 +1,172 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
-import { me, type User } from "../lib/auth";
 
-type DbUser = {
+type UserRow = {
   id: number;
-  first_name: string | null;
-  last_name: string | null;
   username: string;
   role: "ADMIN" | "USER";
   is_active: number;
-  created_at: string;
+  first_name?: string | null;
+  last_name?: string | null;
 };
 
 export default function Admin() {
-  const [tab, setTab] = useState<"users" | "lists">("users");
-  const [current, setCurrent] = useState<User | null>(null);
-
-  useEffect(() => { me().then(setCurrent).catch(() => setCurrent(null)); }, []);
+  const [tab, setTab] = useState<"users" | "lists">("lists");
 
   return (
     <div className="w-full space-y-6">
-      <div className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-extrabold">Admin Panel</h1>
-          <p className="text-sm text-black/60">Utenti e liste (cantieri, mezzi, dipendenti)</p>
-        </div>
-        <div className="text-sm text-black/60">
-          Loggato come: <span className="font-semibold">{current ? `${current.firstName} ${current.lastName}` : "—"}</span>
-        </div>
+      <div>
+        <h1 className="text-3xl font-extrabold">Admin Panel</h1>
+        <p className="text-sm text-black/60">Utenti + Import liste Excel</p>
       </div>
 
       <div className="flex gap-2">
         <button
-          className={`px-4 py-2 rounded-lg border ${tab === "users" ? "bg-brand-orange text-white border-brand-orange" : "bg-white border-black/10"}`}
           onClick={() => setTab("users")}
+          className={`px-4 py-2 rounded-lg font-bold border ${
+            tab === "users" ? "bg-brand-orange text-white border-brand-orange" : "bg-white border-black/10"
+          }`}
         >
           Utenti
         </button>
         <button
-          className={`px-4 py-2 rounded-lg border ${tab === "lists" ? "bg-brand-orange text-white border-brand-orange" : "bg-white border-black/10"}`}
           onClick={() => setTab("lists")}
+          className={`px-4 py-2 rounded-lg font-bold border ${
+            tab === "lists" ? "bg-brand-orange text-white border-brand-orange" : "bg-white border-black/10"
+          }`}
         >
-          Liste
+          Liste (Excel)
         </button>
       </div>
 
-      {tab === "users" ? <UsersPanel /> : <ListsPanel />}
+      {tab === "users" ? <UsersPanel /> : <ListsImportPanel />}
     </div>
   );
 }
 
 function UsersPanel() {
-  const [users, setUsers] = useState<DbUser[]>([]);
-  const [firstName, setFirst] = useState("");
-  const [lastName, setLast] = useState("");
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [first_name, setFirst] = useState("");
+  const [last_name, setLast] = useState("");
   const [username, setU] = useState("");
   const [password, setP] = useState("");
   const [role, setRole] = useState<"ADMIN" | "USER">("USER");
-  const [msg, setMsg] = useState<string | null>(null);
 
-  async function refresh() {
-    const data = await apiGet<DbUser[]>("/api/admin/users");
-    setUsers(data);
+  async function load() {
+    const r = await apiGet<UserRow[]>("/api/admin/users");
+    setUsers(r);
   }
 
-  useEffect(() => { refresh().catch(() => {}); }, []);
-
-  async function createUser() {
-    setMsg(null);
-    try {
-      await apiPost("/api/admin/users", { firstName, lastName, username, password, role });
-      setFirst(""); setLast(""); setU(""); setP(""); setRole("USER");
-      setMsg("Utente creato ✅");
-      refresh();
-    } catch (e: any) {
-      setMsg("Errore creazione utente (username già esistente?)");
-    }
-  }
-
-  async function toggle(u: DbUser) {
-    await fetch("/api/admin/users", {
-      method: "PUT",
-      headers: {"Content-Type":"application/json"},
-      credentials: "include",
-      body: JSON.stringify({ id: u.id, isActive: u.is_active !== 1, role: u.role })
-    });
-    refresh();
-  }
-
-  async function changeRole(u: DbUser) {
-    const newRole = u.role === "ADMIN" ? "USER" : "ADMIN";
-    await fetch("/api/admin/users", {
-      method: "PUT",
-      headers: {"Content-Type":"application/json"},
-      credentials: "include",
-      body: JSON.stringify({ id: u.id, isActive: u.is_active === 1, role: newRole })
-    });
-    refresh();
-  }
-
-  async function resetPassword(u: DbUser) {
-    const newPassword = prompt(`Nuova password per ${u.username}:`);
-    if (!newPassword) return;
-    await apiPost("/api/admin/users_reset_password", { id: u.id, newPassword });
-    alert("Password aggiornata ✅");
-  }
+  useEffect(() => {
+    load();
+  }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="grid gap-4 lg:grid-cols-2">
       <div className="bg-white border border-black/10 rounded-2xl p-5">
-        <div className="font-bold text-lg mb-3">Crea nuovo utente</div>
-
-        <div className="grid gap-3 md:grid-cols-4">
-          <input className="border border-black/15 rounded-lg px-3 py-2" placeholder="Nome"
-            value={firstName} onChange={(e)=>setFirst(e.target.value)} />
-          <input className="border border-black/15 rounded-lg px-3 py-2" placeholder="Cognome"
-            value={lastName} onChange={(e)=>setLast(e.target.value)} />
-          <input className="border border-black/15 rounded-lg px-3 py-2" placeholder="Username"
-            value={username} onChange={(e)=>setU(e.target.value)} />
-          <input className="border border-black/15 rounded-lg px-3 py-2" placeholder="Password"
-            value={password} onChange={(e)=>setP(e.target.value)} type="password" />
-        </div>
-
-        <div className="flex items-center justify-between mt-3 gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-black/60">Ruolo:</span>
-            <select className="border border-black/15 rounded-lg px-3 py-2"
-              value={role} onChange={(e)=>setRole(e.target.value === "ADMIN" ? "ADMIN" : "USER")}>
-              <option value="USER">USER</option>
-              <option value="ADMIN">ADMIN</option>
-            </select>
-          </div>
-
-          <button onClick={createUser}
-            className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90">
-            Crea utente
+        <div className="font-bold text-lg mb-3">Crea utente</div>
+        <div className="grid gap-3">
+          <input className="border rounded-lg px-3 py-2" placeholder="Nome" value={first_name} onChange={(e) => setFirst(e.target.value)} />
+          <input className="border rounded-lg px-3 py-2" placeholder="Cognome" value={last_name} onChange={(e) => setLast(e.target.value)} />
+          <input className="border rounded-lg px-3 py-2" placeholder="Username" value={username} onChange={(e) => setU(e.target.value)} />
+          <input className="border rounded-lg px-3 py-2" placeholder="Password" type="password" value={password} onChange={(e) => setP(e.target.value)} />
+          <select className="border rounded-lg px-3 py-2" value={role} onChange={(e) => setRole(e.target.value as any)}>
+            <option value="USER">USER</option>
+            <option value="ADMIN">ADMIN</option>
+          </select>
+          <button
+            className="bg-brand-orange text-white font-bold rounded-lg py-2 hover:opacity-90"
+            onClick={async () => {
+              await apiPost("/api/admin/users", { first_name, last_name, username, password, role });
+              setFirst(""); setLast(""); setU(""); setP(""); setRole("USER");
+              await load();
+              alert("Creato ✅");
+            }}
+          >
+            Crea
           </button>
         </div>
-
-        {msg && <div className="text-sm mt-3 font-semibold">{msg}</div>}
       </div>
 
       <div className="bg-white border border-black/10 rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="font-bold text-lg">Utenti</div>
-          <button className="text-sm font-semibold text-brand-orange" onClick={refresh}>Aggiorna</button>
+        <div className="font-bold text-lg mb-3">Utenti</div>
+        <div className="space-y-2 max-h-[420px] overflow-auto">
+          {users.map((u) => (
+            <div key={u.id} className="border border-black/10 rounded-xl p-3 flex items-center justify-between">
+              <div>
+                <div className="font-bold">
+                  {(u.first_name ?? "")} {(u.last_name ?? "")} <span className="text-black/50">({u.username})</span>
+                </div>
+                <div className="text-xs text-black/60">{u.role} — {u.is_active ? "ATTIVO" : "DISATTIVO"}</div>
+              </div>
+            </div>
+          ))}
         </div>
-
-        <div className="overflow-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b border-black/10">
-                <th className="py-2">Nome</th>
-                <th>Username</th>
-                <th>Ruolo</th>
-                <th>Attivo</th>
-                <th className="text-right">Azioni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(u => (
-                <tr key={u.id} className="border-b border-black/5">
-                  <td className="py-2">{(u.first_name ?? "") + " " + (u.last_name ?? "")}</td>
-                  <td>{u.username}</td>
-                  <td>{u.role}</td>
-                  <td>{u.is_active === 1 ? "SI" : "NO"}</td>
-                  <td className="text-right space-x-2">
-                    <button className="px-3 py-1 rounded-lg border border-black/10" onClick={()=>resetPassword(u)}>Reset PW</button>
-                    <button className="px-3 py-1 rounded-lg border border-black/10" onClick={()=>changeRole(u)}>Cambia ruolo</button>
-                    <button className="px-3 py-1 rounded-lg border border-black/10" onClick={()=>toggle(u)}>{u.is_active===1?"Disattiva":"Attiva"}</button>
-                  </td>
-                </tr>
-              ))}
-              {users.length===0 && (
-                <tr><td className="py-4 text-black/60" colSpan={5}>Nessun utente.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <button className="mt-3 px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={load}>Aggiorna</button>
       </div>
     </div>
   );
 }
 
-function ListsPanel() {
-  const [sub, setSub] = useState<"cantieri"|"mezzi"|"dipendenti">("cantieri");
-  const endpoint = useMemo(() => `/api/admin/${sub}`, [sub]);
+function ListsImportPanel() {
+  const [type, setType] = useState<"cantieri" | "mezzi" | "dipendenti">("cantieri");
+  const [status, setStatus] = useState<string>("");
 
-  const [items, setItems] = useState<any[]>([]);
-  const [search, setSearch] = useState("");
-  const [jsonText, setJsonText] = useState('{"descr":"Esempio"}');
+  async function importFile(file: File) {
+    setStatus("Leggo Excel...");
 
-  async function refresh() {
-    const d = await apiGet<any[]>(endpoint);
-    setItems(d);
-  }
-  useEffect(() => { refresh().catch(()=>{}); }, [endpoint]);
+    const data = await file.arrayBuffer();
 
-  const filtered = items.filter(it => JSON.stringify(it).toLowerCase().includes(search.toLowerCase()));
+    // ✅ import dinamico (più stabile con Vite/Cloudflare)
+    const XLSX = await import("xlsx");
+    const wb = XLSX.read(data);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: "" });
 
-  async function addOrUpdate() {
-    const obj = JSON.parse(jsonText);
-    await apiPost(endpoint, obj);
-    setJsonText('{"descr":"Esempio"}');
-    refresh();
-  }
+    if (type === "dipendenti") {
+      const ok = rows.some((r) => "Codice" in r && "Nome" in r && "Cognome" in r);
+      if (!ok) { setStatus("Excel dipendenti non valido (mancano Codice/Nome/Cognome)"); return; }
+    } else {
+      const ok = rows.some((r) => "Codice" in r && "Descrizione" in r);
+      if (!ok) { setStatus("Excel non valido (mancano Codice/Descrizione)"); return; }
+    }
 
-  async function del(id:number) {
-    await fetch(endpoint, {
-      method: "DELETE",
-      headers: {"Content-Type":"application/json"},
-      credentials: "include",
-      body: JSON.stringify({id})
-    });
-    refresh();
+    setStatus(`Invio al DB (${rows.length} righe)...`);
+    await apiPost(`/api/admin/import/${type}`, { rows });
+    setStatus(`Import completato ✅ (${rows.length} righe)`);
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap">
-        {(["cantieri","mezzi","dipendenti"] as const).map(k => (
-          <button key={k}
-            onClick={()=>setSub(k)}
-            className={`px-4 py-2 rounded-lg border ${sub===k ? "bg-brand-orange text-white border-brand-orange" : "bg-white border-black/10"}`}>
-            {k}
-          </button>
-        ))}
-      </div>
+    <div className="bg-white border border-black/10 rounded-2xl p-5 space-y-4">
+      <div className="font-bold text-lg">Importa liste da Excel</div>
 
-      <div className="bg-white border border-black/10 rounded-2xl p-5 space-y-3">
-        <div className="font-bold">Aggiungi (v1 JSON)</div>
-        <div className="text-xs text-black/60">Inserisci JSON con le colonne che esistono nella tabella (es. descr, codice, targa...).</div>
-        <textarea className="w-full h-28 border border-black/15 rounded-lg p-3 font-mono text-sm"
-          value={jsonText} onChange={(e)=>setJsonText(e.target.value)} />
-        <button onClick={addOrUpdate}
-          className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90">
-          Salva
-        </button>
-      </div>
-
-      <div className="bg-white border border-black/10 rounded-2xl p-5">
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-          <div className="font-bold text-lg">Elenco {sub}</div>
-          <input className="border border-black/15 rounded-lg px-3 py-2"
-            placeholder="Search..."
-            value={search} onChange={(e)=>setSearch(e.target.value)} />
+      <div className="grid gap-3 md:grid-cols-3 items-end">
+        <div>
+          <div className="text-sm font-semibold mb-1">Tipo lista</div>
+          <select className="border rounded-lg px-3 py-2 w-full" value={type} onChange={(e) => setType(e.target.value as any)}>
+            <option value="cantieri">Cantieri</option>
+            <option value="mezzi">Mezzi</option>
+            <option value="dipendenti">Dipendenti</option>
+          </select>
         </div>
 
-        <div className="overflow-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="text-left border-b border-black/10">
-              <th className="py-2">ID</th><th>Record</th><th className="text-right">Azioni</th>
-            </tr></thead>
-            <tbody>
-              {filtered.map(it => (
-                <tr key={it.id} className="border-b border-black/5">
-                  <td className="py-2">{it.id}</td>
-                  <td className="font-mono text-xs">{JSON.stringify(it)}</td>
-                  <td className="text-right">
-                    <button className="px-3 py-1 rounded-lg border border-black/10" onClick={()=>del(it.id)}>
-                      Elimina
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length===0 && <tr><td colSpan={3} className="py-4 text-black/60">Nessun elemento.</td></tr>}
-            </tbody>
-          </table>
+        <div className="md:col-span-2">
+          <div className="text-sm font-semibold mb-1">Seleziona file Excel</div>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); }}
+            className="border rounded-lg px-3 py-2 w-full"
+          />
         </div>
       </div>
+
+      <div className="text-sm text-black/60">
+        * Cantieri/Mezzi: colonne <b>Codice</b>, <b>Descrizione</b><br />
+        * Dipendenti: colonne <b>Codice</b>, <b>Nome</b>, <b>Cognome</b>, <b>Descrizione</b>
+      </div>
+
+      {status && <div className="text-sm font-semibold">{status}</div>}
     </div>
   );
 }

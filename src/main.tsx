@@ -5,9 +5,9 @@ import "./index.css";
 
 import AppLayout from "./layout/AppLayout";
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
+import DashboardDay from "./pages/DashboardDay";
+import DayCantiere from "./pages/DayCantiere";
 import Admin from "./pages/Admin";
-import Inserimento from "./pages/Inserimento";
 import ExportPage from "./pages/ExportPage";
 
 import RequireAuth from "./components/RequireAuth";
@@ -27,8 +27,11 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           }
         >
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/inserimento" element={<Inserimento />} />
+          <Route path="/dashboard" element={<DashboardDay />} />
+
+          <Route path="/day" element={<DashboardDay />} />
+          <Route path="/day/edit" element={<DayCantiere />} />
+
           <Route path="/export" element={<ExportPage />} />
 
           <Route

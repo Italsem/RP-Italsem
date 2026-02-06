@@ -1,59 +1,147 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { apiGet } from "../lib/api";
+import pdfMake from "pdfmake/build/pdfmake";
+import pdfFonts from "pdfmake/build/vfs_fonts";
 
-function monthNow() {
+(pdfMake as any).vfs = (pdfFonts as any).pdfMake.vfs;
+
+function todayISO() {
   const d = new Date();
+  const y = d.getFullYear();
   const m = String(d.getMonth()+1).padStart(2,"0");
-  return `${d.getFullYear()}-${m}`;
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${dd}`;
+}
+
+async function fetchLogoDataUrl(): Promise<string> {
+  const res = await fetch("/logo.png");
+  const blob = await res.blob();
+  return await new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.readAsDataURL(blob);
+  });
 }
 
 export default function ExportPage() {
-  const [month, setMonth] = useState(monthNow());
+  const [date, setDate] = useState(todayISO());
+  const [active, setActive] = useState<any[]>([]);
 
-  const pres = useMemo(()=>`/api/export_presenze?month=${encodeURIComponent(month)}`, [month]);
-  const cant = useMemo(()=>`/api/export_cantiere?month=${encodeURIComponent(month)}`, [month]);
-  const cpm  = useMemo(()=>`/api/export_cpm?month=${encodeURIComponent(month)}`, [month]);
+  useEffect(() => {
+    (async () => {
+      const r = await apiGet<any[]>(`/api/day/active?date=${encodeURIComponent(date)}`);
+      setActive(r);
+    })();
+  }, [date]);
+
+  async function buildPDFPresenze() {
+    const logo = await fetchLogoDataUrl();
+
+    // prendo tutti i cantieri del giorno e carico i payload
+    const presMap: Record<string, number> = {};
+
+    for (const c of active) {
+      const sheet = await apiGet<any>(`/api/day/sheet?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}`);
+      const rows = sheet.payload?.rows ?? [];
+      for (const r of rows) {
+        if (r.type !== "DIP") continue;
+        const key = r.desc || r.code || "SENZA_NOME";
+        presMap[key] = (presMap[key] ?? 0) + (Number(r.ordinario) || 0);
+      }
+    }
+
+    const body = [
+      [{ text: "Operaio", bold: true }, { text: "Giornate (Ordinario)", bold: true }],
+      ...Object.entries(presMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([k,v]) => [k, v.toFixed(2)]),
+    ];
+
+    const doc = {
+      content: [
+        { image: logo, width: 120 },
+        { text: "Presenze per Operaio", style: "h1" },
+        { text: `Data: ${date}\n\n` },
+        {
+          table: { headerRows: 1, widths: ["*", 140], body },
+          layout: "lightHorizontalLines",
+        },
+      ],
+      styles: {
+        h1: { fontSize: 18, bold: true, margin: [0, 10, 0, 10] },
+      },
+      defaultStyle: { fontSize: 10 },
+    };
+
+    (pdfMake as any).createPdf(doc).download(`presenze_${date}.pdf`);
+  }
+
+  async function buildPDFCantiere() {
+    const logo = await fetchLogoDataUrl();
+
+    const body = [
+      [{ text: "Cantiere", bold: true }, { text: "Totale Ordinario", bold: true }],
+    ];
+
+    for (const c of active) {
+      const sheet = await apiGet<any>(`/api/day/sheet?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}`);
+      const rows = sheet.payload?.rows ?? [];
+      let sum = 0;
+      for (const r of rows) sum += Number(r.ordinario) || 0;
+      body.push([`${c.cantiere_code} - ${c.cantiere_desc}`, sum.toFixed(2)]);
+    }
+
+    const doc = {
+      content: [
+        { image: logo, width: 120 },
+        { text: "Report Cantieri", style: "h1" },
+        { text: `Data: ${date}\n\n` },
+        {
+          table: { headerRows: 1, widths: ["*", 140], body },
+          layout: "lightHorizontalLines",
+        },
+      ],
+      styles: {
+        h1: { fontSize: 18, bold: true, margin: [0, 10, 0, 10] },
+      },
+      defaultStyle: { fontSize: 10 },
+    };
+
+    (pdfMake as any).createPdf(doc).download(`cantieri_${date}.pdf`);
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between flex-wrap gap-3">
+      <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl font-extrabold">Export</h1>
-          <p className="text-sm text-black/60">Scarica CSV per presenze / cantiere / CPM</p>
+          <h1 className="text-3xl font-extrabold">Export PDF</h1>
+          <p className="text-sm text-black/60">PDF con logo + tabelle</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="text-sm text-black/60">Mese:</div>
-          <input className="border border-black/15 rounded-lg px-3 py-2"
-            value={month}
-            onChange={(e)=>setMonth(e.target.value)}
-            placeholder="YYYY-MM"
-          />
+          <div className="text-sm font-semibold">Data</div>
+          <input type="date" className="border rounded-lg px-3 py-2" value={date} onChange={(e)=>setDate(e.target.value)} />
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card title="Presenze per Operaio" desc="Somma giornate per dipendente" href={pres} />
-        <Card title="Report per Cantiere" desc="Totali per riga/cantiere" href={cant} />
-        <Card title="Export CPM (CSV)" desc="Base import CPM (v1)" href={cpm} />
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="bg-white border border-black/10 rounded-2xl p-5">
+          <div className="font-bold text-lg">Presenze per Operaio</div>
+          <div className="text-sm text-black/60 mt-1">Somma Ordinario (giornate) su tutti i cantieri del giorno</div>
+          <button onClick={buildPDFPresenze} className="mt-4 px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90">
+            Scarica PDF
+          </button>
+        </div>
+
+        <div className="bg-white border border-black/10 rounded-2xl p-5">
+          <div className="font-bold text-lg">Report Cantieri</div>
+          <div className="text-sm text-black/60 mt-1">Totale Ordinario per cantiere (giornata)</div>
+          <button onClick={buildPDFCantiere} className="mt-4 px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90">
+            Scarica PDF
+          </button>
+        </div>
       </div>
 
       <div className="text-sm text-black/60">
-        Nota: l’export CPM identico al template XLSX lo finalizziamo dopo usando il file di riferimento, ma già ora puoi esportare e verificare la struttura.
+        Il CPM lo rendiamo identico al tuo file di riferimento (XLSX “a blocchi giorno”) appena mi confermi le colonne fisse e le regole finali.
       </div>
-    </div>
-  );
-}
-
-function Card({ title, desc, href }: { title: string; desc: string; href: string }) {
-  return (
-    <div className="bg-white border border-black/10 rounded-2xl p-5">
-      <div className="font-bold text-lg">{title}</div>
-      <div className="text-sm text-black/60 mt-1">{desc}</div>
-      <a
-        className="inline-block mt-4 px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90"
-        href={href}
-      >
-        Scarica CSV
-      </a>
     </div>
   );
 }
