@@ -6,81 +6,17 @@ export type AuthedUser = {
   last_name?: string | null;
 };
 
-function parseCookies(cookieHeader: string | null) {
-  const out: Record<string, string> = {};
-  if (!cookieHeader) return out;
-  for (const part of cookieHeader.split(";")) {
-    const [k, ...rest] = part.trim().split("=");
-    if (!k) continue;
-    out[k] = decodeURIComponent(rest.join("=") || "");
-  }
-  return out;
-}
-
-function makeSessionId() {
-  return crypto.randomUUID();
-}
-
-export async function getUser(ctx: any): Promise<AuthedUser | null> {
-  const cookies = parseCookies(ctx.request.headers.get("Cookie"));
-  const sid = cookies["sid"];
-  if (!sid) return null;
-
-  const session = await ctx.env.DB.prepare(
-    `SELECT s.id as sid, s.user_id, u.id, u.username, u.role, u.is_active, u.first_name, u.last_name
-     FROM sessions s
-     JOIN users u ON u.id = s.user_id
-     WHERE s.id = ?`
-  ).bind(sid).first<any>();
-
-  if (!session || !session.is_active) return null;
-
+// ✅ AUTH DISABILITATA: sempre admin
+export async function getUser(_ctx: any): Promise<AuthedUser | null> {
   return {
-    id: session.id,
-    username: session.username,
-    role: session.role,
-    first_name: session.first_name,
-    last_name: session.last_name,
+    id: 1,
+    username: "admin",
+    role: "ADMIN",
+    first_name: "Luca",
+    last_name: "Franceschetti",
   };
 }
 
 export function requireAdmin(u: AuthedUser | null) {
   return !!u && u.role === "ADMIN";
 }
-
-export async function createSession(ctx: any, u: AuthedUser) {
-  const sid = makeSessionId();
-
-  // ✅ Fallback schema: prima prova con created_at, se fallisce inserisce solo id+user_id
-  try {
-    await ctx.env.DB.prepare(
-      `INSERT INTO sessions (id, user_id, created_at)
-       VALUES (?, ?, datetime('now'))`
-    ).bind(sid, u.id).run();
-  } catch (e) {
-    console.log("createSession fallback (no created_at)", e);
-    await ctx.env.DB.prepare(
-      `INSERT INTO sessions (id, user_id)
-       VALUES (?, ?)`
-    ).bind(sid, u.id).run();
-  }
-
-  const headers = new Headers();
-  headers.append(
-    "Set-Cookie",
-    `sid=${encodeURIComponent(sid)}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${60 * 60 * 24 * 14}`
-  );
-
-  return new Response(JSON.stringify({ ok: true, user: u }), {
-    status: 200,
-    headers: {
-      "Content-Type": "application/json",
-      ...Object.fromEntries(headers.entries()),
-    },
-  });
-}
-
-export function clearSessionCookie() {
-  return `sid=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0`;
-}
-

@@ -1,172 +1,122 @@
-import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "../lib/api";
+import { useState } from "react";
+import * as XLSX from "xlsx";
+import { apiPost } from "../lib/api";
 
-type UserRow = {
-  id: number;
-  username: string;
-  role: "ADMIN" | "USER";
-  is_active: number;
-  first_name?: string | null;
-  last_name?: string | null;
-};
+type ImportKind = "cantieri" | "mezzi" | "dipendenti";
+
+function readFirstSheetRows(file: File) {
+  return new Promise<any[]>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Errore lettura file"));
+    reader.onload = () => {
+      try {
+        const data = new Uint8Array(reader.result as ArrayBuffer);
+        const wb = XLSX.read(data, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        resolve(json as any[]);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
 
 export default function Admin() {
-  const [tab, setTab] = useState<"users" | "lists">("lists");
-
-  return (
-    <div className="w-full space-y-6">
-      <div>
-        <h1 className="text-3xl font-extrabold">Admin Panel</h1>
-        <p className="text-sm text-black/60">Utenti + Import liste Excel</p>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={() => setTab("users")}
-          className={`px-4 py-2 rounded-lg font-bold border ${
-            tab === "users" ? "bg-brand-orange text-white border-brand-orange" : "bg-white border-black/10"
-          }`}
-        >
-          Utenti
-        </button>
-        <button
-          onClick={() => setTab("lists")}
-          className={`px-4 py-2 rounded-lg font-bold border ${
-            tab === "lists" ? "bg-brand-orange text-white border-brand-orange" : "bg-white border-black/10"
-          }`}
-        >
-          Liste (Excel)
-        </button>
-      </div>
-
-      {tab === "users" ? <UsersPanel /> : <ListsImportPanel />}
-    </div>
-  );
-}
-
-function UsersPanel() {
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [first_name, setFirst] = useState("");
-  const [last_name, setLast] = useState("");
-  const [username, setU] = useState("");
-  const [password, setP] = useState("");
-  const [role, setRole] = useState<"ADMIN" | "USER">("USER");
-
-  async function load() {
-    const r = await apiGet<UserRow[]>("/api/admin/users");
-    setUsers(r);
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div className="bg-white border border-black/10 rounded-2xl p-5">
-        <div className="font-bold text-lg mb-3">Crea utente</div>
-        <div className="grid gap-3">
-          <input className="border rounded-lg px-3 py-2" placeholder="Nome" value={first_name} onChange={(e) => setFirst(e.target.value)} />
-          <input className="border rounded-lg px-3 py-2" placeholder="Cognome" value={last_name} onChange={(e) => setLast(e.target.value)} />
-          <input className="border rounded-lg px-3 py-2" placeholder="Username" value={username} onChange={(e) => setU(e.target.value)} />
-          <input className="border rounded-lg px-3 py-2" placeholder="Password" type="password" value={password} onChange={(e) => setP(e.target.value)} />
-          <select className="border rounded-lg px-3 py-2" value={role} onChange={(e) => setRole(e.target.value as any)}>
-            <option value="USER">USER</option>
-            <option value="ADMIN">ADMIN</option>
-          </select>
-          <button
-            className="bg-brand-orange text-white font-bold rounded-lg py-2 hover:opacity-90"
-            onClick={async () => {
-              await apiPost("/api/admin/users", { first_name, last_name, username, password, role });
-              setFirst(""); setLast(""); setU(""); setP(""); setRole("USER");
-              await load();
-              alert("Creato ✅");
-            }}
-          >
-            Crea
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white border border-black/10 rounded-2xl p-5">
-        <div className="font-bold text-lg mb-3">Utenti</div>
-        <div className="space-y-2 max-h-[420px] overflow-auto">
-          {users.map((u) => (
-            <div key={u.id} className="border border-black/10 rounded-xl p-3 flex items-center justify-between">
-              <div>
-                <div className="font-bold">
-                  {(u.first_name ?? "")} {(u.last_name ?? "")} <span className="text-black/50">({u.username})</span>
-                </div>
-                <div className="text-xs text-black/60">{u.role} — {u.is_active ? "ATTIVO" : "DISATTIVO"}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <button className="mt-3 px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={load}>Aggiorna</button>
-      </div>
-    </div>
-  );
-}
-
-function ListsImportPanel() {
-  const [type, setType] = useState<"cantieri" | "mezzi" | "dipendenti">("cantieri");
   const [status, setStatus] = useState<string>("");
 
-  async function importFile(file: File) {
-    setStatus("Leggo Excel...");
+  async function handleImport(kind: ImportKind, file: File | null) {
+    if (!file) return;
 
-    const data = await file.arrayBuffer();
+    try {
+      setStatus(`Leggo Excel (${kind})...`);
+      const rows = await readFirstSheetRows(file);
 
-    // ✅ import dinamico (più stabile con Vite/Cloudflare)
-    const XLSX = await import("xlsx");
-    const wb = XLSX.read(data);
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<any>(ws, { defval: "" });
+      setStatus(`Invio ${rows.length} righe al server (${kind})...`);
+      const res = await apiPost<{ ok: boolean; inserted: number }>(
+        `/api/admin/import/${kind}`,
+        { rows }
+      );
 
-    if (type === "dipendenti") {
-      const ok = rows.some((r) => "Codice" in r && "Nome" in r && "Cognome" in r);
-      if (!ok) { setStatus("Excel dipendenti non valido (mancano Codice/Nome/Cognome)"); return; }
-    } else {
-      const ok = rows.some((r) => "Codice" in r && "Descrizione" in r);
-      if (!ok) { setStatus("Excel non valido (mancano Codice/Descrizione)"); return; }
+      setStatus(`✅ Import ${kind} completato: ${res.inserted} righe inserite/aggiornate`);
+    } catch (e: any) {
+      console.error(e);
+      setStatus(`❌ Errore import ${kind}: ${String(e?.message ?? e)}`);
     }
-
-    setStatus(`Invio al DB (${rows.length} righe)...`);
-    await apiPost(`/api/admin/import/${type}`, { rows });
-    setStatus(`Import completato ✅ (${rows.length} righe)`);
   }
 
   return (
-    <div className="bg-white border border-black/10 rounded-2xl p-5 space-y-4">
-      <div className="font-bold text-lg">Importa liste da Excel</div>
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <div className="rounded-2xl bg-white p-6 shadow-sm border">
+          <h1 className="text-2xl font-bold">Admin Panel</h1>
+          <p className="text-slate-600 mt-1">
+            Carica gli Excel per popolare il database (cantieri, mezzi, dipendenti).
+          </p>
 
-      <div className="grid gap-3 md:grid-cols-3 items-end">
-        <div>
-          <div className="text-sm font-semibold mb-1">Tipo lista</div>
-          <select className="border rounded-lg px-3 py-2 w-full" value={type} onChange={(e) => setType(e.target.value as any)}>
-            <option value="cantieri">Cantieri</option>
-            <option value="mezzi">Mezzi</option>
-            <option value="dipendenti">Dipendenti</option>
-          </select>
-        </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <ImportCard
+              title="Import Cantieri"
+              subtitle="Excel con colonne: Codice, Descrizione"
+              onImport={(f) => handleImport("cantieri", f)}
+            />
+            <ImportCard
+              title="Import Mezzi"
+              subtitle="Excel con colonne: Codice, Descrizione"
+              onImport={(f) => handleImport("mezzi", f)}
+            />
+            <ImportCard
+              title="Import Dipendenti"
+              subtitle="Excel con colonne: Codice, Nome, Cognome, Descrizione"
+              onImport={(f) => handleImport("dipendenti", f)}
+            />
+          </div>
 
-        <div className="md:col-span-2">
-          <div className="text-sm font-semibold mb-1">Seleziona file Excel</div>
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) importFile(f); }}
-            className="border rounded-lg px-3 py-2 w-full"
-          />
+          <div className="mt-6 rounded-xl border bg-slate-50 p-4 text-sm">
+            <div className="font-semibold">Stato</div>
+            <div className="mt-1 text-slate-700 whitespace-pre-wrap">{status || "—"}</div>
+          </div>
+
+          <div className="mt-6 text-xs text-slate-500">
+            Nota: per ora l’auth è disabilitata (tutti admin). La rimettiamo dopo.
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="text-sm text-black/60">
-        * Cantieri/Mezzi: colonne <b>Codice</b>, <b>Descrizione</b><br />
-        * Dipendenti: colonne <b>Codice</b>, <b>Nome</b>, <b>Cognome</b>, <b>Descrizione</b>
-      </div>
+function ImportCard({
+  title,
+  subtitle,
+  onImport,
+}: {
+  title: string;
+  subtitle: string;
+  onImport: (file: File | null) => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
 
-      {status && <div className="text-sm font-semibold">{status}</div>}
+  return (
+    <div className="rounded-2xl border bg-white p-4">
+      <div className="font-semibold">{title}</div>
+      <div className="text-xs text-slate-600 mt-1">{subtitle}</div>
+
+      <input
+        className="mt-3 block w-full text-sm"
+        type="file"
+        accept=".xlsx,.xls"
+        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+      />
+
+      <button
+        className="mt-3 w-full rounded-xl bg-orange-500 px-3 py-2 text-sm font-semibold text-white hover:bg-orange-600"
+        onClick={() => onImport(file)}
+        disabled={!file}
+      >
+        Importa
+      </button>
     </div>
   );
 }
