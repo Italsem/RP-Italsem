@@ -1,224 +1,292 @@
+// src/pages/Admin.tsx
 import { useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
+import * as XLSX from "xlsx";
 
 type UserRow = {
   id: number;
   username: string;
   role: "ADMIN" | "USER";
   is_active: number;
-  created_at?: string;
   first_name?: string | null;
   last_name?: string | null;
 };
 
-export default function Admin() {
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState<string | null>(null);
+type ImportKind = "cantieri" | "mezzi" | "dipendenti";
 
-  // form create user/admin
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+function errMsg(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+export default function Admin() {
+  const [me, setMe] = useState<any>(null);
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string>("");
+
+  // crea utente
+  const [firstName, setFirstName] = useState("Luca");
+  const [lastName, setLastName] = useState("Franceschetti");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"USER" | "ADMIN">("USER");
-
-  async function load() {
-    setLoading(true);
-    setMsg(null);
-    try {
-      const r = await apiGet("/api/admin/users");
-      setUsers(r.users || []);
-    } catch (e: any) {
-      setMsg(e?.message || "Errore caricamento utenti");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [role, setRole] = useState<"ADMIN" | "USER">("USER");
 
   useEffect(() => {
-    load();
+    (async () => {
+      try {
+        const m = await apiGet("/api/auth/me");
+        setMe(m);
+      } catch {}
+      try {
+        const u = await apiGet<UserRow[]>("/api/admin/users");
+        setUsers(u || []);
+      } catch {}
+    })();
   }, []);
 
-  const sorted = useMemo(() => {
-    return [...users].sort((a, b) => b.id - a.id);
-  }, [users]);
+  const isAdmin = useMemo(() => (me?.role === "ADMIN"), [me]);
 
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setMsg(null);
+  async function refreshUsers() {
+    const u = await apiGet<UserRow[]>("/api/admin/users");
+    setUsers(u || []);
+  }
+
+  async function createUser() {
+    setMsg("");
+    if (!username.trim() || !password.trim()) {
+      setMsg("Inserisci username e password.");
+      return;
+    }
+    setBusy(true);
     try {
       await apiPost("/api/admin/users", {
-        first_name: firstName.trim(),
-        last_name: lastName.trim(),
+        first_name: firstName?.trim() || null,
+        last_name: lastName?.trim() || null,
         username: username.trim(),
-        password,
+        password: password,
         role,
       });
-
-      setFirstName("");
-      setLastName("");
       setUsername("");
       setPassword("");
       setRole("USER");
-
-      setMsg("✅ Utente creato!");
-      await load();
-    } catch (err: any) {
-      setMsg(err?.message || "Errore creazione utente");
+      await refreshUsers();
+      setMsg("✅ Utente creato.");
+    } catch (e) {
+      setMsg("❌ " + errMsg(e));
+    } finally {
+      setBusy(false);
     }
   }
 
+  function readExcel(file: File): any[] {
+    const reader = new FileReader();
+    return new Promise<any[]>((resolve, reject) => {
+      reader.onerror = () => reject(new Error("Impossibile leggere il file."));
+      reader.onload = () => {
+        try {
+          const data = new Uint8Array(reader.result as ArrayBuffer);
+          const wb = XLSX.read(data, { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          resolve(json as any[]);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }) as any;
+  }
+
+  async function importExcel(kind: ImportKind, file: File) {
+    setMsg("");
+    setBusy(true);
+    try {
+      const rows = await readExcel(file);
+
+      // endpoint atteso: /api/admin/import/:kind
+      // payload: { rows: [...] }
+      await apiPost(`/api/admin/import/${kind}`, { rows });
+
+      setMsg(`✅ Import ${kind} completato (${rows.length} righe).`);
+    } catch (e) {
+      setMsg(`❌ Import ${kind} fallito: ` + errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!isAdmin) {
+    return (
+      <div style={{ padding: 24 }}>
+        <h2>Admin</h2>
+        <p>Non autorizzato.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold">Admin Panel</h1>
-      <p className="text-sm text-slate-600 mt-1">
-        Qui puoi creare utenti/admin. (Liste cantieri/mezzi/dipendenti: le rimettiamo subito dopo, appena stabilizziamo il deploy.)
-      </p>
+    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
+      <h2 style={{ marginBottom: 8 }}>Pannello Admin</h2>
+      <p style={{ marginTop: 0, opacity: 0.8 }}>Gestione utenti + import liste Excel</p>
 
       {msg && (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-sm">
+        <div
+          style={{
+            margin: "12px 0",
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #eee",
+            background: "#fff",
+            whiteSpace: "pre-wrap",
+          }}
+        >
           {msg}
         </div>
       )}
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        {/* CREATE USER */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Crea nuovo utente / admin</h2>
+      {/* CREAZIONE UTENTE */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 18 }}>
+        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 16, background: "#fff" }}>
+          <h3 style={{ marginTop: 0 }}>Crea nuovo utente / admin</h3>
 
-          <form className="mt-4 grid gap-3" onSubmit={onCreate}>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div>
-                <label className="text-sm font-medium">Nome</label>
-                <input
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="es. Luca"
-                />
-              </div>
+          <label style={{ display: "block", fontSize: 12, marginBottom: 6 }}>Nome</label>
+          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} style={inputStyle} />
 
-              <div>
-                <label className="text-sm font-medium">Cognome</label>
-                <input
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  placeholder="es. Franceschetti"
-                />
-              </div>
-            </div>
+          <label style={{ display: "block", fontSize: 12, margin: "10px 0 6px" }}>Cognome</label>
+          <input value={lastName} onChange={(e) => setLastName(e.target.value)} style={inputStyle} />
 
-            <div>
-              <label className="text-sm font-medium">Username</label>
-              <input
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="es. luca"
-                required
-              />
-            </div>
+          <label style={{ display: "block", fontSize: 12, margin: "10px 0 6px" }}>Username</label>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} style={inputStyle} />
 
-            <div>
-              <label className="text-sm font-medium">Password</label>
-              <input
-                type="password"
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="min 6 caratteri"
-                required
-              />
-            </div>
+          <label style={{ display: "block", fontSize: 12, margin: "10px 0 6px" }}>Password</label>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} />
 
-            <div>
-              <label className="text-sm font-medium">Ruolo</label>
-              <select
-                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 outline-none focus:ring-2 focus:ring-orange-300"
-                value={role}
-                onChange={(e) => setRole(e.target.value === "ADMIN" ? "ADMIN" : "USER")}
-              >
-                <option value="USER">USER</option>
-                <option value="ADMIN">ADMIN</option>
-              </select>
-            </div>
+          <label style={{ display: "block", fontSize: 12, margin: "10px 0 6px" }}>Ruolo</label>
+          <select value={role} onChange={(e) => setRole(e.target.value as any)} style={inputStyle}>
+            <option value="USER">USER</option>
+            <option value="ADMIN">ADMIN</option>
+          </select>
 
-            <button
-              className="mt-2 rounded-lg bg-orange-500 px-4 py-2 font-semibold text-white hover:bg-orange-600"
-              type="submit"
-            >
-              Crea
-            </button>
-          </form>
+          <button onClick={createUser} disabled={busy} style={btnStyle}>
+            {busy ? "Attendi..." : "Crea utente"}
+          </button>
         </div>
 
-        {/* USERS LIST */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Utenti</h2>
-            <button
-              onClick={load}
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
-            >
-              Aggiorna
-            </button>
-          </div>
+        {/* IMPORT EXCEL */}
+        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 16, background: "#fff" }}>
+          <h3 style={{ marginTop: 0 }}>Importa liste Excel</h3>
 
-          {loading ? (
-            <div className="mt-4 text-sm text-slate-600">Caricamento…</div>
-          ) : (
-            <div className="mt-4 overflow-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-slate-600">
-                    <th className="py-2 pr-3">ID</th>
-                    <th className="py-2 pr-3">Nome</th>
-                    <th className="py-2 pr-3">Username</th>
-                    <th className="py-2 pr-3">Ruolo</th>
-                    <th className="py-2 pr-3">Attivo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((u) => (
-                    <tr key={u.id} className="border-t border-slate-100">
-                      <td className="py-2 pr-3">{u.id}</td>
-                      <td className="py-2 pr-3">
-                        {(u.first_name || "") + " " + (u.last_name || "")}
-                      </td>
-                      <td className="py-2 pr-3">{u.username}</td>
-                      <td className="py-2 pr-3">
-                        <span
-                          className={
-                            u.role === "ADMIN"
-                              ? "rounded-full bg-black px-2 py-1 text-white"
-                              : "rounded-full bg-slate-100 px-2 py-1"
-                          }
-                        >
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-3">{u.is_active ? "SI" : "NO"}</td>
-                    </tr>
-                  ))}
-                  {sorted.length === 0 && (
-                    <tr>
-                      <td className="py-3 text-slate-500" colSpan={5}>
-                        Nessun utente trovato.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <ImportBox title="Import Cantieri" kind="cantieri" onImport={importExcel} disabled={busy} />
+          <ImportBox title="Import Mezzi" kind="mezzi" onImport={importExcel} disabled={busy} />
+          <ImportBox title="Import Dipendenti" kind="dipendenti" onImport={importExcel} disabled={busy} />
 
-          <div className="mt-4 text-xs text-slate-500">
-            Nota: ora le password vengono salvate **hashate** + salt.
-          </div>
+          <p style={{ fontSize: 12, opacity: 0.75, marginTop: 12 }}>
+            Nota: prende il primo foglio del file Excel e manda tutte le righe al backend.
+          </p>
         </div>
+      </div>
+
+      {/* LISTA UTENTI */}
+      <div style={{ marginTop: 18, border: "1px solid #eee", borderRadius: 12, padding: 16, background: "#fff" }}>
+        <h3 style={{ marginTop: 0 }}>Utenti</h3>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>ID</th>
+                <th style={th}>Nome</th>
+                <th style={th}>Cognome</th>
+                <th style={th}>Username</th>
+                <th style={th}>Ruolo</th>
+                <th style={th}>Attivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td style={td}>{u.id}</td>
+                  <td style={td}>{u.first_name || ""}</td>
+                  <td style={td}>{u.last_name || ""}</td>
+                  <td style={td}>{u.username}</td>
+                  <td style={td}>{u.role}</td>
+                  <td style={td}>{u.is_active ? "SI" : "NO"}</td>
+                </tr>
+              ))}
+              {users.length === 0 && (
+                <tr>
+                  <td style={td} colSpan={6}>
+                    Nessun utente trovato.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <button onClick={refreshUsers} disabled={busy} style={{ ...btnStyle, marginTop: 12 }}>
+          Aggiorna lista
+        </button>
       </div>
     </div>
   );
 }
+
+function ImportBox(props: {
+  title: string;
+  kind: ImportKind;
+  onImport: (kind: ImportKind, file: File) => Promise<void>;
+  disabled?: boolean;
+}) {
+  const { title, kind, onImport, disabled } = props;
+
+  return (
+    <div style={{ marginTop: 12, padding: 12, border: "1px dashed #ddd", borderRadius: 10 }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>{title}</div>
+      <input
+        type="file"
+        accept=".xlsx,.xls"
+        disabled={disabled}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onImport(kind, f);
+          e.currentTarget.value = ""; // reset input
+        }}
+      />
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #ddd",
+  outline: "none",
+};
+
+const btnStyle: React.CSSProperties = {
+  marginTop: 12,
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: 10,
+  border: "none",
+  background: "#ff7a00",
+  color: "white",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const th: React.CSSProperties = {
+  textAlign: "left",
+  fontSize: 12,
+  padding: 10,
+  borderBottom: "1px solid #eee",
+  whiteSpace: "nowrap",
+};
+
+const td: React.CSSProperties = {
+  fontSize: 13,
+  padding: 10,
+  borderBottom: "1px solid #f3f3f3",
+  whiteSpace: "nowrap",
+};
