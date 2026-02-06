@@ -21,6 +21,8 @@ dist-ssr
 .DS_Store
 Thumbs.db
 
-# Admin seed (NON committare)
+# Seed/reset files (non caricare)
 admin_seed.sql
+admin_reset.sql
 create_admin.ts
+reset_admin.ts
