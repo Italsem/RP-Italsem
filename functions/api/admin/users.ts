@@ -1,4 +1,4 @@
-import { getUser, requireAdmin, sha256Hex } from "../_auth";
+import { getUser, requireAdmin } from "../_auth";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   const u = await getUser(ctx);
@@ -18,19 +18,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   if (!requireAdmin(u)) return new Response("Forbidden", { status: 403 });
 
   const { first_name, last_name, username, password, role } = await ctx.request.json();
+
   if (!first_name || !last_name || !username || !password) {
     return new Response("Missing fields", { status: 400 });
   }
 
-  const passHash = await sha256Hex(String(password));
   const userRole = role === "ADMIN" ? "ADMIN" : "USER";
 
+  // ✅ Password salvata in chiaro (temporaneo, per velocità)
   await ctx.env.DB.prepare(
     `INSERT INTO users (username, password_hash, role, is_active, first_name, last_name)
      VALUES (?, ?, ?, 1, ?, ?)`
   )
-    .bind(String(username), passHash, userRole, String(first_name), String(last_name))
+    .bind(String(username), String(password), userRole, String(first_name), String(last_name))
     .run();
 
   return Response.json({ ok: true });
 };
+
