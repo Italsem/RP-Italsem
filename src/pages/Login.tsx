@@ -7,6 +7,14 @@ export default function Login() {
   const nav = useNavigate();
   const loc = useLocation() as any;
 
+import { useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { login } from "../lib/auth";
+
+export default function Login() {
+  const nav = useNavigate();
+  const loc = useLocation() as any;
+
   const from = useMemo(() => loc?.state?.from ?? "/dashboard", [loc]);
 
   const [username, setUsername] = useState("");
@@ -14,13 +22,16 @@ export default function Login() {
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErr(null);
     setLoading(true);
+
     try {
       await login(username.trim(), password);
-      nav(from, { replace: true });
+
+      // 🔥 FORZIAMO redirect e refresh stato
+      window.location.href = from;
     } catch {
       setErr("Credenziali non valide");
     } finally {
