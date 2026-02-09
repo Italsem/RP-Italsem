@@ -1,10 +1,15 @@
 // functions/api/lists/[type].ts
 import { json } from "../_auth";
 
-const MAP: Record<string, { table: string; code: string; desc: string }> = {
+const MAP: Record<string, { table: string; code: string; desc: string; q?: string[] }> = {
   cantieri: { table: "cantieri", code: "codice", desc: "descrizione" },
   mezzi: { table: "mezzi", code: "codice", desc: "descrizione" },
-  dipendenti: { table: "dipendenti", code: "codice", desc: "descrizione" },
+  dipendenti: {
+    table: "dipendenti",
+    code: "codice",
+    desc: "trim(coalesce(nome,'') || ' ' || coalesce(cognome,'') || case when coalesce(descrizione,'') <> '' then ' - ' || descrizione else '' end)",
+    q: ["codice", "nome", "cognome", "descrizione"],
+  },
 };
 
 export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
@@ -18,8 +23,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   let sql = `SELECT ${m.code} as codice, ${m.desc} as descrizione FROM ${m.table}`;
   const binds: any[] = [];
   if (q) {
-    sql += ` WHERE ${m.code} LIKE ? OR ${m.desc} LIKE ?`;
-    binds.push(`%${q}%`, `%${q}%`);
+    const qCols = m.q && m.q.length > 0 ? m.q : [m.code, m.desc];
+    sql += ` WHERE ${qCols.map((c) => `${c} LIKE ?`).join(" OR ")}`;
+    for (let i = 0; i < qCols.length; i++) binds.push(`%${q}%`);
   }
   sql += ` ORDER BY ${m.code} LIMIT 50`;
 

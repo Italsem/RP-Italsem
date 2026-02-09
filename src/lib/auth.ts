@@ -8,8 +8,29 @@ export type User = {
   lastName: string;
 };
 
+type MeResponse = {
+  ok: boolean;
+  user: {
+    id: number;
+    username: string;
+    role: "ADMIN" | "USER";
+    first_name?: string;
+    last_name?: string;
+    firstName?: string;
+    lastName?: string;
+  };
+};
+
 export async function me(): Promise<User> {
-  return apiGet<User>("/api/auth/me");
+  const res = await apiGet<MeResponse>("/api/auth/me");
+  const u = res.user;
+  return {
+    id: u.id,
+    username: u.username,
+    role: u.role,
+    firstName: u.firstName ?? u.first_name ?? "",
+    lastName: u.lastName ?? u.last_name ?? "",
+  };
 }
 
 export async function login(username: string, password: string) {

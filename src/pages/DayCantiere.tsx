@@ -35,8 +35,8 @@ export default function DayCantiere() {
     () =>
       dip
         .map((d) => ({
-          code: d.Codice ?? "",
-          label: `${d.Codice} - ${d.Nome ?? ""} ${d.Cognome ?? ""} - ${d.Descrizione ?? ""}`.trim(),
+          code: d.Codice ?? d.codice ?? "",
+          label: `${d.Codice ?? d.codice ?? ""} - ${d.Nome ?? d.nome ?? ""} ${d.Cognome ?? d.cognome ?? ""} - ${d.Descrizione ?? d.descrizione ?? ""}`.trim(),
         }))
         .filter((x) => x.code && x.label),
     [dip]
@@ -46,8 +46,8 @@ export default function DayCantiere() {
     () =>
       mezzi
         .map((m) => ({
-          code: m.Codice ?? "",
-          label: `${m.Codice} - ${m.Descrizione ?? ""}`.trim(),
+          code: m.Codice ?? m.codice ?? "",
+          label: `${m.Codice ?? m.codice ?? ""} - ${m.Descrizione ?? m.descrizione ?? ""}`.trim(),
         }))
         .filter((x) => x.code && x.label),
     [mezzi]
