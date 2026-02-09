@@ -18,6 +18,8 @@ export default function DashboardDay() {
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
   const [addCode, setAddCode] = useState("");
   const [addDesc, setAddDesc] = useState("");
+  const [copyFromDate, setCopyFromDate] = useState(todayISO());
+  const [copyToDate, setCopyToDate] = useState(todayISO());
 
   const cantieriOptions = useMemo(
     () =>
@@ -68,6 +70,19 @@ export default function DashboardDay() {
     }
   }
 
+
+  async function duplicateDay() {
+    if (!copyFromDate || !copyToDate) return alert("Seleziona entrambe le date");
+    if (copyFromDate === copyToDate) return alert("La data sorgente e destinazione devono essere diverse");
+    try {
+      const r = await apiPost<{ ok: boolean; copied: number }>("/api/day/duplicate", { from_date: copyFromDate, to_date: copyToDate });
+      alert(`Giornata duplicata ✅ Cantieri copiati: ${r.copied ?? 0}`);
+      if (copyToDate === date) await loadActive();
+    } catch (e: any) {
+      alert(e?.message || "Errore duplicazione giornata");
+    }
+  }
+
   async function addCantiereToDay() {
     if (!addCode || !addDesc) {
       alert("Seleziona un cantiere");
@@ -98,6 +113,26 @@ export default function DashboardDay() {
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
+        </div>
+      </div>
+
+
+      <div className="bg-white border border-black/10 rounded-2xl p-5 space-y-3">
+        <div className="font-bold text-lg">Duplica giornata lavorativa</div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div>
+            <div className="text-sm text-black/60 mb-1">Copia da data</div>
+            <input type="date" className="border rounded-lg px-3 py-2 w-full" value={copyFromDate} onChange={(e)=>setCopyFromDate(e.target.value)} />
+          </div>
+          <div>
+            <div className="text-sm text-black/60 mb-1">Incolla su data</div>
+            <input type="date" className="border rounded-lg px-3 py-2 w-full" value={copyToDate} onChange={(e)=>setCopyToDate(e.target.value)} />
+          </div>
+          <div className="flex items-end">
+            <button className="px-4 py-2 rounded-lg bg-black text-white font-bold hover:opacity-90 w-full" onClick={duplicateDay}>
+              Duplica giornata
+            </button>
+          </div>
         </div>
       </div>
 
