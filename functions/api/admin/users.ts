@@ -1,45 +1,46 @@
 // functions/api/admin/users.ts
-import { json, requireAdmin, sha256Hex } from "../_auth";
+import { json, badRequest, requireAdmin, sha256Hex } from "../_auth";
 
-function randomSalt() {
-  const a = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
+function randSalt() {
+  return crypto.randomUUID().replaceAll("-", "");
 }
 
 export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
-  const admin = await requireAdmin(ctx as any);
-  if (!admin) return json({ ok: false, error: "Forbidden" }, { status: 403 });
+  const g = await requireAdmin(ctx);
+  if (!g.ok) return g.res;
 
   const rows = await ctx.env.DB.prepare(
-    "SELECT id, username, role, is_active, first_name, last_name, created_at FROM users ORDER BY id DESC"
-  ).all();
+    `SELECT id, username, role, is_active, first_name, last_name, created_at
+     FROM users ORDER BY id DESC`
+  ).all<any>();
 
-  return json({ ok: true, rows: rows.results || [] });
+  return json({ ok: true, users: rows.results || [] });
 };
 
 export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
-  const admin = await requireAdmin(ctx as any);
-  if (!admin) return json({ ok: false, error: "Forbidden" }, { status: 403 });
+  const g = await requireAdmin(ctx);
+  if (!g.ok) return g.res;
 
-  const body = await ctx.request.json().catch(() => null);
+  const b = await ctx.request.json().catch(() => null) as any;
+  const username = (b?.username || "").trim();
+  const password = (b?.password || "").toString();
+  const role = (b?.role || "USER") as "USER" | "ADMIN";
+  const first_name = (b?.first_name || "").trim();
+  const last_name = (b?.last_name || "").trim();
 
-  const username = String(body?.username || "").trim();
-  const password = String(body?.password || "");
-  const first_name = String(body?.first_name || "").trim();
-  const last_name = String(body?.last_name || "").trim();
-  const role = String(body?.role || "USER").toUpperCase() === "ADMIN" ? "ADMIN" : "USER";
+  if (!username || !password) return badRequest("Missing username/password");
+  if (role !== "USER" && role !== "ADMIN") return badRequest("Invalid role");
 
-  if (!username || !password) return json({ ok: false, error: "Missing fields" }, { status: 400 });
+  const exists = await ctx.env.DB.prepare(`SELECT 1 FROM users WHERE username=?`).bind(username).first<any>();
+  if (exists) return badRequest("Username già esistente");
 
-  const salt = randomSalt();
+  const salt = randSalt();
   const password_hash = await sha256Hex(salt + password);
 
   await ctx.env.DB.prepare(
     `INSERT INTO users (username, password_hash, salt, role, is_active, first_name, last_name)
      VALUES (?, ?, ?, ?, 1, ?, ?)`
-  )
-    .bind(username, password_hash, salt, role, first_name || null, last_name || null)
-    .run();
+  ).bind(username, password_hash, salt, role, first_name, last_name).run();
 
   return json({ ok: true });
 };

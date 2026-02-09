@@ -1,170 +1,148 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { apiGet } from "../lib/api";
-import pdfMake from "pdfmake/build/pdfmake";
-import vfsFonts from "pdfmake/build/vfs_fonts";
 
-// ✅ FIX robusto: compatibilità Vite/ESM
-const vfs =
-  (vfsFonts as any)?.pdfMake?.vfs ||
-  (vfsFonts as any)?.vfs ||
-  (vfsFonts as any);
+let pdfMake: any;
 
-(pdfMake as any).vfs = vfs;
+async function ensurePdfMake() {
+  if (pdfMake) return pdfMake;
 
-function todayISO() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
+  const pm = await import("pdfmake/build/pdfmake");
+  const vf = await import("pdfmake/build/vfs_fonts");
+
+  pdfMake = (pm as any).default || pm;
+  const vfs = (vf as any).pdfMake?.vfs || (vf as any).default?.pdfMake?.vfs || (vf as any).vfs;
+  pdfMake.vfs = pdfMake.vfs || vfs;
+
+  return pdfMake;
 }
 
-async function fetchLogoDataUrl(): Promise<string> {
-  const res = await fetch("/logo.png");
+async function toDataUrl(url: string): Promise<string> {
+  const res = await fetch(url, { cache: "no-cache" });
   const blob = await res.blob();
-  return await new Promise((resolve) => {
+  return await new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result));
+    r.onerror = reject;
     r.readAsDataURL(blob);
   });
 }
 
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function ExportPage() {
-  const [date, setDate] = useState(todayISO());
-  const [active, setActive] = useState<any[]>([]);
+  const [from, setFrom] = useState(todayISO());
+  const [to, setTo] = useState(todayISO());
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const r = await apiGet<any[]>(`/api/day/active?date=${encodeURIComponent(date)}`);
-      setActive(r);
-    })();
-  }, [date]);
+  const exportRangePdf = async () => {
+    if (!from || !to) return alert("Seleziona un range valido");
+    if (from > to) return alert("La data 'Da' non può essere dopo 'A'");
 
-  async function buildPDFPresenze() {
-    const logo = await fetchLogoDataUrl();
+    setLoading(true);
+    try {
+      // Qui devi usare un endpoint che ritorna le righe nel range.
+      // Se non esiste ancora, dimmelo e lo aggiungo subito nel backend.
+      // Io ipotizzo: /api/export_presenze_range?from=YYYY-MM-DD&to=YYYY-MM-DD
+      const data = await apiGet<any>(`/api/export_presenze_range?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 
-    const presMap: Record<string, number> = {};
+      const logoDataUrl = await toDataUrl("/logo.png");
+      const pm = await ensurePdfMake();
 
-    for (const c of active) {
-      const sheet = await apiGet<any>(
-        `/api/day/sheet?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}`
-      );
-      const rows = sheet.payload?.rows ?? [];
-      for (const r of rows) {
-        if (r.type !== "DIP") continue;
-        const key = r.desc || r.code || "SENZA_NOME";
-        presMap[key] = (presMap[key] ?? 0) + (Number(r.ordinario) || 0);
+      const body = [
+        [
+          { text: "DATA", bold: true },
+          { text: "CANTIERE", bold: true },
+          { text: "TIPO", bold: true },
+          { text: "CODICE", bold: true },
+          { text: "DESCR", bold: true },
+          { text: "ORD", bold: true, alignment: "right" },
+          { text: "NOTT", bold: true, alignment: "right" },
+          { text: "PIOG", bold: true, alignment: "right" },
+          { text: "MAL", bold: true, alignment: "right" },
+          { text: "TRASF", bold: true, alignment: "right" },
+          { text: "NOTE", bold: true },
+        ],
+      ];
+
+      for (const r of data.rows || []) {
+        body.push([
+          r.data || "",
+          `${r.cantiere_codice || ""}`,
+          r.tipo || "",
+          r.risorsa_codice || "",
+          r.risorsa_descrizione || "",
+          { text: String(r.ordinario ?? 0), alignment: "right" },
+          { text: String(r.notturno ?? 0), alignment: "right" },
+          { text: String(r.pioggia ?? 0), alignment: "right" },
+          { text: String(r.malattia ?? 0), alignment: "right" },
+          { text: String(r.trasferta ?? 0), alignment: "right" },
+          (r.note || "").toString(),
+        ]);
       }
+
+      const doc: any = {
+        pageOrientation: "landscape",
+        pageMargins: [25, 30, 25, 30],
+        content: [
+          {
+            columns: [
+              { image: logoDataUrl, width: 90 },
+              [
+                { text: "EXPORT PRESENZE", fontSize: 16, bold: true, margin: [0, 8, 0, 2] },
+                { text: `Range: ${from} → ${to}`, fontSize: 10, color: "#666" },
+              ],
+            ],
+            margin: [0, 0, 0, 12],
+          },
+          {
+            table: {
+              headerRows: 1,
+              widths: [55, 70, 55, 65, 150, 35, 40, 40, 35, 45, "*"],
+              body,
+            },
+            layout: "lightHorizontalLines",
+            fontSize: 8,
+          },
+        ],
+      };
+
+      pm.createPdf(doc).download(`presenze_${from}_to_${to}.pdf`);
+    } catch (e: any) {
+      alert(e?.message || "Errore export");
+    } finally {
+      setLoading(false);
     }
-
-    const body = [
-      [{ text: "Operaio", bold: true }, { text: "Giornate (Ordinario)", bold: true }],
-      ...Object.entries(presMap)
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([k, v]) => [k, v.toFixed(2)]),
-    ];
-
-    const doc: any = {
-      content: [
-        { image: logo, width: 120 },
-        { text: "Presenze per Operaio", style: "h1" },
-        { text: `Data: ${date}\n\n` },
-        {
-          table: { headerRows: 1, widths: ["*", 140], body },
-          layout: "lightHorizontalLines",
-        },
-      ],
-      styles: {
-        h1: { fontSize: 18, bold: true, margin: [0, 10, 0, 10] },
-      },
-      defaultStyle: { fontSize: 10 },
-    };
-
-    (pdfMake as any).createPdf(doc).download(`presenze_${date}.pdf`);
-  }
-
-  async function buildPDFCantiere() {
-    const logo = await fetchLogoDataUrl();
-
-    const body: any[] = [
-      [{ text: "Cantiere", bold: true }, { text: "Totale Ordinario", bold: true }],
-    ];
-
-    for (const c of active) {
-      const sheet = await apiGet<any>(
-        `/api/day/sheet?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}`
-      );
-      const rows = sheet.payload?.rows ?? [];
-      let sum = 0;
-      for (const r of rows) sum += Number(r.ordinario) || 0;
-      body.push([`${c.cantiere_code} - ${c.cantiere_desc}`, sum.toFixed(2)]);
-    }
-
-    const doc: any = {
-      content: [
-        { image: logo, width: 120 },
-        { text: "Report Cantieri", style: "h1" },
-        { text: `Data: ${date}\n\n` },
-        {
-          table: { headerRows: 1, widths: ["*", 140], body },
-          layout: "lightHorizontalLines",
-        },
-      ],
-      styles: {
-        h1: { fontSize: 18, bold: true, margin: [0, 10, 0, 10] },
-      },
-      defaultStyle: { fontSize: 10 },
-    };
-
-    (pdfMake as any).createPdf(doc).download(`cantieri_${date}.pdf`);
-  }
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between gap-3 flex-wrap">
+    <div className="mx-auto max-w-4xl p-4">
+      <h1 className="text-2xl font-bold">Export</h1>
+      <div className="mt-4 grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-3">
         <div>
-          <h1 className="text-3xl font-extrabold">Export PDF</h1>
-          <p className="text-sm text-black/60">PDF con logo + tabelle</p>
+          <div className="mb-1 text-sm text-gray-600">Da</div>
+          <input className="w-full rounded-xl border px-3 py-2" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </div>
-        <div className="flex items-center gap-2">
-          <div className="text-sm font-semibold">Data</div>
-          <input
-            type="date"
-            className="border rounded-lg px-3 py-2"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+        <div>
+          <div className="mb-1 text-sm text-gray-600">A</div>
+          <input className="w-full rounded-xl border px-3 py-2" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="bg-white border border-black/10 rounded-2xl p-5">
-          <div className="font-bold text-lg">Presenze per Operaio</div>
-          <div className="text-sm text-black/60 mt-1">
-            Somma Ordinario (giornate) su tutti i cantieri del giorno
-          </div>
-          <button
-            onClick={buildPDFPresenze}
-            className="mt-4 px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90"
-          >
-            Scarica PDF
-          </button>
-        </div>
-
-        <div className="bg-white border border-black/10 rounded-2xl p-5">
-          <div className="font-bold text-lg">Report Cantieri</div>
-          <div className="text-sm text-black/60 mt-1">Totale Ordinario per cantiere (giornata)</div>
-          <button
-            onClick={buildPDFCantiere}
-            className="mt-4 px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90"
-          >
-            Scarica PDF
+        <div className="flex items-end">
+          <button className="w-full rounded-xl bg-black px-4 py-2 text-white" disabled={loading} onClick={exportRangePdf}>
+            {loading ? "Generazione..." : "Export Presenze (PDF)"}
           </button>
         </div>
       </div>
 
-      <div className="text-sm text-black/60">
-        CPM: lo renderemo identico al tuo template XLSX appena agganciamo le colonne fisse e i codici finali.
+      <div className="mt-3 flex gap-2">
+        <a className="rounded-xl border px-4 py-2" href="/api/export_cpm" target="_blank" rel="noreferrer">
+          Export CPM (invariato)
+        </a>
       </div>
     </div>
   );
