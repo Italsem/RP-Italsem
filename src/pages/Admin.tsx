@@ -1,7 +1,36 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../lib/api";
+import * as XLSX from "xlsx";
+
+let pdfMake: any;
+
+async function ensurePdfMake() {
+  if (pdfMake) return pdfMake;
+
+  const pm = await import("pdfmake/build/pdfmake");
+  const vf = await import("pdfmake/build/vfs_fonts");
+  pdfMake = (pm as any).default || pm;
+  const vfs = (vf as any).pdfMake?.vfs || (vf as any).default?.pdfMake?.vfs || (vf as any).vfs;
+  pdfMake.vfs = pdfMake.vfs || vfs;
+  return pdfMake;
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type U = { id: number; username: string; role: "ADMIN" | "USER"; is_active: number; first_name?: string; last_name?: string; created_at?: string };
+type BackupResp = {
+  ok: true;
+  generated_at: string;
+  tables: Record<string, Record<string, any>[]>;
+  rapportini_daily: Record<string, any>[];
+};
 
 export default function Admin() {
   const [users, setUsers] = useState<U[]>([]);
@@ -16,6 +45,7 @@ export default function Admin() {
   const [importType, setImportType] = useState<"cantieri" | "mezzi" | "dipendenti">("cantieri");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [backuping, setBackuping] = useState(false);
 
   const load = async () => {
     setErr(null);
@@ -56,6 +86,85 @@ export default function Admin() {
       alert(e.message || "Errore import");
     } finally {
       setImporting(false);
+    }
+  };
+
+  const getBackupData = async () => apiGet<BackupResp>("/api/admin/backup");
+
+  const runBackupJson = async () => {
+    setBackuping(true);
+    try {
+      const data = await getBackupData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+      downloadBlob(blob, `backup_db_${data.generated_at.slice(0, 10)}.json`);
+    } catch (e: any) {
+      alert(e.message || "Errore backup DB");
+    } finally {
+      setBackuping(false);
+    }
+  };
+
+  const runBackupExcel = async () => {
+    setBackuping(true);
+    try {
+      const data = await getBackupData();
+      const wb = XLSX.utils.book_new();
+
+      const daily = data.rapportini_daily || [];
+      const wsDaily = XLSX.utils.json_to_sheet(daily);
+      XLSX.utils.book_append_sheet(wb, wsDaily, "rapportini_giorno");
+
+      Object.entries(data.tables || {}).forEach(([name, rows]) => {
+        const ws = XLSX.utils.json_to_sheet(rows || []);
+        XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+      });
+
+      const arr = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+      downloadBlob(new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `backup_rapportini_${data.generated_at.slice(0, 10)}.xlsx`);
+    } catch (e: any) {
+      alert(e.message || "Errore backup Excel");
+    } finally {
+      setBackuping(false);
+    }
+  };
+
+  const runBackupPdf = async () => {
+    setBackuping(true);
+    try {
+      const data = await getBackupData();
+      const rows = data.rapportini_daily || [];
+      const grouped: Record<string, Record<string, any>[]> = {};
+      for (const row of rows) {
+        const key = row.data || "SENZA_DATA";
+        grouped[key] = grouped[key] || [];
+        grouped[key].push(row);
+      }
+
+      const content: any[] = [
+        { text: "Backup rapportini giorno per giorno", style: "title" },
+        { text: `Generato il: ${data.generated_at}`, style: "subtitle", margin: [0, 0, 0, 8] },
+      ];
+
+      Object.keys(grouped).sort().forEach((day, idx) => {
+        const body = [["Tipo", "Cantiere", "Codice", "Descrizione", "Ordinario", "Note"]];
+        grouped[day].forEach((r) => {
+          body.push([r.tipo || "", r.cantiere || "", r.codice || "", r.descrizione || "", String(r.ordinario ?? 0), `${r.note_riga || ""} ${r.note_giorno || ""}`.trim()]);
+        });
+
+        content.push({ text: day, bold: true, margin: [0, idx === 0 ? 0 : 10, 0, 4] });
+        content.push({ table: { headerRows: 1, widths: [45, 110, 60, "*", 55, 150], body }, fontSize: 8, layout: "lightHorizontalLines" });
+      });
+
+      if (Object.keys(grouped).length === 0) {
+        content.push({ text: "Nessun rapportino disponibile", italics: true });
+      }
+
+      const pm = await ensurePdfMake();
+      pm.createPdf({ content, pageOrientation: "landscape", styles: { title: { fontSize: 16, bold: true }, subtitle: { fontSize: 10, color: "#666" } } }).download(`backup_rapportini_${data.generated_at.slice(0, 10)}.pdf`);
+    } catch (e: any) {
+      alert(e.message || "Errore backup PDF");
+    } finally {
+      setBackuping(false);
     }
   };
 
@@ -132,6 +241,24 @@ export default function Admin() {
           <input className="rounded-xl border px-3 py-2 md:col-span-2" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setImportFile(e.target.files?.[0] || null)} />
           <button className="rounded-xl bg-brand-orange px-4 py-2 text-white font-bold" onClick={runImport} disabled={importing}>
             {importing ? "Import in corso..." : "Importa / Aggiorna"}
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border bg-white p-4">
+        <div className="font-semibold">Backup amministratore</div>
+        <div className="text-sm text-gray-600 mb-3">
+          Scarica un backup completo del DB (JSON) e dei rapportini giorno per giorno in formato Excel o PDF.
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <button className="rounded-xl border px-4 py-2" onClick={runBackupJson} disabled={backuping}>
+            {backuping ? "Elaborazione..." : "Backup DB (JSON)"}
+          </button>
+          <button className="rounded-xl bg-brand-orange px-4 py-2 text-white font-bold" onClick={runBackupExcel} disabled={backuping}>
+            {backuping ? "Elaborazione..." : "Rapportini Giornalieri (Excel)"}
+          </button>
+          <button className="rounded-xl bg-black px-4 py-2 text-white" onClick={runBackupPdf} disabled={backuping}>
+            {backuping ? "Elaborazione..." : "Rapportini Giornalieri (PDF)"}
           </button>
         </div>
       </div>
