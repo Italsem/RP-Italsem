@@ -6,7 +6,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
 
   const url = new URL(ctx.request.url);
   const date = url.searchParams.get("date");
-  const code = url.searchParams.get("cantiere_code");
+  const code = url.searchParams.get("cantiere_code") || url.searchParams.get("code");
   if (!date || !code) return new Response("Missing params", { status: 400 });
 
   const row = await ctx.env.DB.prepare(

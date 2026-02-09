@@ -72,10 +72,18 @@ export default function Inserimento() {
     alert("Rapportino salvato ✅");
   }
 
-  // autocomplete: uso datalist con stringa JSON descr (v1)
-  const cantiereOptions = cantieri.map(c => (c.descr ?? c.nome ?? c.cantiere ?? JSON.stringify(c)));
-  const dipOptions = dip.map(d => (d.descr ?? d.nome ?? d.nominativo ?? JSON.stringify(d)));
-  const mezziOptions = mezzi.map(m => (m.descr ?? m.targa ?? m.mezzo ?? JSON.stringify(m)));
+  const cantiereOptions = cantieri.map((c) => ({
+    code: c.codice ?? c.Codice ?? "",
+    desc: c.descrizione ?? c.descr ?? c.nome ?? c.cantiere ?? "",
+  })).filter((x) => x.desc);
+  const dipOptions = dip.map((d) => ({
+    code: d.codice ?? d.Codice ?? "",
+    desc: d.descrizione ?? d.descr ?? d.nominativo ?? `${d.cognome ?? ""} ${d.nome ?? ""}`.trim(),
+  })).filter((x) => x.desc);
+  const mezziOptions = mezzi.map((m) => ({
+    code: m.codice ?? m.Codice ?? "",
+    desc: m.descrizione ?? m.descr ?? m.targa ?? m.mezzo ?? "",
+  })).filter((x) => x.desc);
 
   return (
     <div className="space-y-6">
@@ -103,9 +111,9 @@ export default function Inserimento() {
         <button onClick={()=>addRow("HOTEL")} className="px-4 py-2 rounded-lg border border-black/10 bg-white">+ Hotel</button>
       </div>
 
-      <datalist id="dl-cantieri">{cantiereOptions.map((x,i)=><option key={i} value={x} />)}</datalist>
-      <datalist id="dl-dip">{dipOptions.map((x,i)=><option key={i} value={x} />)}</datalist>
-      <datalist id="dl-mezzi">{mezziOptions.map((x,i)=><option key={i} value={x} />)}</datalist>
+      <datalist id="dl-cantieri">{cantiereOptions.map((x,i)=><option key={i} value={x.desc} />)}</datalist>
+      <datalist id="dl-dip">{dipOptions.map((x,i)=><option key={i} value={x.desc} />)}</datalist>
+      <datalist id="dl-mezzi">{mezziOptions.map((x,i)=><option key={i} value={x.desc} />)}</datalist>
 
       <div className="bg-white border border-black/10 rounded-2xl p-4 overflow-auto">
         <table className="min-w-[1200px] w-full text-xs">
@@ -135,7 +143,21 @@ export default function Inserimento() {
                   <input
                     list={row.type==="DIP" ? "dl-dip" : row.type==="MEZZO" ? "dl-mezzi" : undefined}
                     className="border border-black/10 rounded px-2 py-1 w-64"
-                    value={row.name} onChange={(e)=>setRow(row.id,{name:e.target.value})}
+                    value={row.name}
+                    onChange={(e)=>{
+                      const name = e.target.value;
+                      if (row.type === "DIP") {
+                        const found = dipOptions.find((x) => x.desc === name);
+                        setRow(row.id,{name, code: found?.code ?? row.code});
+                        return;
+                      }
+                      if (row.type === "MEZZO") {
+                        const found = mezziOptions.find((x) => x.desc === name);
+                        setRow(row.id,{name, code: found?.code ?? row.code});
+                        return;
+                      }
+                      setRow(row.id,{name});
+                    }}
                     placeholder={row.type==="HOTEL" ? 'HOTEL 01 / HOTEL 02 (note=nome hotel)' : ''}
                   />
                 </td>
