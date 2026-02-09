@@ -24,12 +24,30 @@ function downloadBlob(blob: Blob, fileName: string) {
   URL.revokeObjectURL(url);
 }
 
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const val = bytes / Math.pow(1024, i);
+  return `${val.toFixed(i === 0 ? 0 : 2)} ${units[i]}`;
+}
+
 type U = { id: number; username: string; role: "ADMIN" | "USER"; is_active: number; first_name?: string; last_name?: string; created_at?: string };
 type BackupResp = {
   ok: true;
   generated_at: string;
   tables: Record<string, Record<string, any>[]>;
   rapportini_daily: Record<string, any>[];
+};
+type StorageResp = {
+  ok: true;
+  quota_bytes: number;
+  used_bytes: number;
+  free_bytes: number;
+  used_percent: number;
+  rapportini_bytes: number;
+  approx: boolean;
+  breakdown: { table: string; rows: number; bytes: number }[];
 };
 
 export default function Admin() {
@@ -46,24 +64,47 @@ export default function Admin() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [backuping, setBackuping] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [storage, setStorage] = useState<StorageResp | null>(null);
+
+  const loadUsers = async () => {
+    const r = await apiGet<{ ok: true; users: U[] }>("/api/admin/users");
+    setUsers(r.users || []);
+  };
+
+  const loadStorage = async () => {
+    setStorageLoading(true);
+    try {
+      const s = await apiGet<StorageResp>("/api/admin/storage");
+      setStorage(s);
+    } finally {
+      setStorageLoading(false);
+    }
+  };
 
   const load = async () => {
     setErr(null);
     try {
-      const r = await apiGet<{ ok: true; users: U[] }>("/api/admin/users");
-      setUsers(r.users || []);
+      await Promise.all([loadUsers(), loadStorage()]);
     } catch (e: any) {
       setErr(e.message || "Errore");
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const createUser = async () => {
     try {
       await apiPost("/api/admin/users", { first_name, last_name, username, password, role });
-      setFirst(""); setLast(""); setUsername(""); setPassword(""); setRole("USER");
-      await load();
+      setFirst("");
+      setLast("");
+      setUsername("");
+      setPassword("");
+      setRole("USER");
+      await loadUsers();
       alert("Utente creato!");
     } catch (e: any) {
       alert(e.message || "Errore");
@@ -82,6 +123,7 @@ export default function Admin() {
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       alert(`Import completato ✅ Righe aggiornate: ${j.upserted ?? 0}`);
       setImportFile(null);
+      await loadStorage();
     } catch (e: any) {
       alert(e.message || "Errore import");
     } finally {
@@ -97,8 +139,10 @@ export default function Admin() {
       const data = await getBackupData();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
       downloadBlob(blob, `backup_db_${data.generated_at.slice(0, 10)}.json`);
+      return true;
     } catch (e: any) {
       alert(e.message || "Errore backup DB");
+      return false;
     } finally {
       setBackuping(false);
     }
@@ -110,8 +154,7 @@ export default function Admin() {
       const data = await getBackupData();
       const wb = XLSX.utils.book_new();
 
-      const daily = data.rapportini_daily || [];
-      const wsDaily = XLSX.utils.json_to_sheet(daily);
+      const wsDaily = XLSX.utils.json_to_sheet(data.rapportini_daily || []);
       XLSX.utils.book_append_sheet(wb, wsDaily, "rapportini_giorno");
 
       Object.entries(data.tables || {}).forEach(([name, rows]) => {
@@ -132,9 +175,8 @@ export default function Admin() {
     setBackuping(true);
     try {
       const data = await getBackupData();
-      const rows = data.rapportini_daily || [];
       const grouped: Record<string, Record<string, any>[]> = {};
-      for (const row of rows) {
+      for (const row of data.rapportini_daily || []) {
         const key = row.data || "SENZA_DATA";
         grouped[key] = grouped[key] || [];
         grouped[key].push(row);
@@ -145,15 +187,17 @@ export default function Admin() {
         { text: `Generato il: ${data.generated_at}`, style: "subtitle", margin: [0, 0, 0, 8] },
       ];
 
-      Object.keys(grouped).sort().forEach((day, idx) => {
-        const body = [["Tipo", "Cantiere", "Codice", "Descrizione", "Ordinario", "Note"]];
-        grouped[day].forEach((r) => {
-          body.push([r.tipo || "", r.cantiere || "", r.codice || "", r.descrizione || "", String(r.ordinario ?? 0), `${r.note_riga || ""} ${r.note_giorno || ""}`.trim()]);
-        });
+      Object.keys(grouped)
+        .sort()
+        .forEach((day, idx) => {
+          const body = [["Tipo", "Cantiere", "Codice", "Descrizione", "Ordinario", "Note"]];
+          grouped[day].forEach((r) => {
+            body.push([r.tipo || "", r.cantiere || "", r.codice || "", r.descrizione || "", String(r.ordinario ?? 0), `${r.note_riga || ""} ${r.note_giorno || ""}`.trim()]);
+          });
 
-        content.push({ text: day, bold: true, margin: [0, idx === 0 ? 0 : 10, 0, 4] });
-        content.push({ table: { headerRows: 1, widths: [45, 110, 60, "*", 55, 150], body }, fontSize: 8, layout: "lightHorizontalLines" });
-      });
+          content.push({ text: day, bold: true, margin: [0, idx === 0 ? 0 : 10, 0, 4] });
+          content.push({ table: { headerRows: 1, widths: [45, 110, 60, "*", 55, 150], body }, fontSize: 8, layout: "lightHorizontalLines" });
+        });
 
       if (Object.keys(grouped).length === 0) {
         content.push({ text: "Nessun rapportino disponibile", italics: true });
@@ -168,6 +212,31 @@ export default function Admin() {
     }
   };
 
+  const runCleanupRapportini = async () => {
+    if (cleaning || backuping) return;
+    const proceedWithBackup = window.confirm(
+      "Prima della pulizia dei rapportini vuoi fare un backup? Premi OK per fare backup e continuare. Premi Annulla per fermare la pulizia.",
+    );
+    if (!proceedWithBackup) return;
+
+    const backupOk = await runBackupJson();
+    if (!backupOk) return;
+
+    const confirmDelete = window.confirm("Confermi la pulizia completa dei rapportini? Questa operazione è irreversibile.");
+    if (!confirmDelete) return;
+
+    setCleaning(true);
+    try {
+      const res = await apiPost<{ ok: true; deleted: number }>("/api/admin/cleanup_rapportini", {});
+      alert(`Pulizia completata ✅ Rapportini eliminati: ${res.deleted ?? 0}`);
+      await loadStorage();
+    } catch (e: any) {
+      alert(e.message || "Errore pulizia rapportini");
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-6xl p-4">
       <div className="mb-4 flex items-start justify-between">
@@ -175,12 +244,34 @@ export default function Admin() {
           <h1 className="text-2xl font-bold">Pannello Admin</h1>
           <div className="text-sm text-gray-600">Gestione utenti + import liste + configurazioni.</div>
         </div>
-        <a className="rounded-xl border px-4 py-2" href="/">← Dashboard</a>
+        <a className="rounded-xl border px-4 py-2" href="/">
+          ← Dashboard
+        </a>
       </div>
 
       {err && <div className="mb-3 rounded-xl border border-red-300 bg-red-50 p-3 text-red-700">{err}</div>}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="mt-4 rounded-2xl border bg-white p-4">
+        <div className="font-semibold">Spazio database</div>
+        <div className="text-sm text-gray-600 mb-3">
+          Stima dello spazio occupato (calcolo approssimato dai dati serializzati). Rapportini: <b>{formatBytes(storage?.rapportini_bytes || 0)}</b>
+        </div>
+        <div className="h-4 w-full overflow-hidden rounded-full bg-gray-200">
+          <div className="h-full bg-brand-orange transition-all" style={{ width: `${storage?.used_percent ?? 0}%` }} />
+        </div>
+        <div className="mt-2 text-sm text-gray-700">
+          {storageLoading ? "Calcolo in corso..." : `${formatBytes(storage?.used_bytes || 0)} usati su ${formatBytes(storage?.quota_bytes || 0)} • liberi: ${formatBytes(storage?.free_bytes || 0)} (${(storage?.used_percent || 0).toFixed(2)}%)`}
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {(storage?.breakdown || []).map((row) => (
+            <div key={row.table} className="rounded-lg border px-3 py-2 text-sm">
+              <b>{row.table}</b> — {row.rows} righe — {formatBytes(row.bytes)}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div className="rounded-2xl border bg-white p-4">
           <div className="mb-2 font-semibold">Crea nuovo utente / admin</div>
           <div className="grid gap-2">
@@ -214,12 +305,20 @@ export default function Admin() {
                 {users.map((u) => (
                   <tr key={u.id} className="border-b">
                     <td className="p-2 font-medium">{u.username}</td>
-                    <td className="p-2">{(u.first_name || "")} {(u.last_name || "")}</td>
+                    <td className="p-2">
+                      {(u.first_name || "")} {(u.last_name || "")}
+                    </td>
                     <td className="p-2">{u.role}</td>
                     <td className="p-2">{u.is_active ? "SI" : "NO"}</td>
                   </tr>
                 ))}
-                {users.length === 0 && <tr><td className="p-4 text-gray-600" colSpan={4}>Nessun utente</td></tr>}
+                {users.length === 0 && (
+                  <tr>
+                    <td className="p-4 text-gray-600" colSpan={4}>
+                      Nessun utente
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -228,9 +327,7 @@ export default function Admin() {
 
       <div className="mt-4 rounded-2xl border bg-white p-4">
         <div className="font-semibold">Import Excel (cantieri / mezzi / operai)</div>
-        <div className="text-sm text-gray-600 mb-3">
-          Importa un file xlsx/xls/csv per aggiornare le anagrafiche. Se il codice esiste, la riga viene aggiornata.
-        </div>
+        <div className="text-sm text-gray-600 mb-3">Importa un file xlsx/xls/csv per aggiornare le anagrafiche. Se il codice esiste, la riga viene aggiornata.</div>
 
         <div className="grid gap-3 md:grid-cols-4">
           <select className="rounded-xl border px-3 py-2" value={importType} onChange={(e) => setImportType(e.target.value as any)}>
@@ -247,20 +344,26 @@ export default function Admin() {
 
       <div className="mt-4 rounded-2xl border bg-white p-4">
         <div className="font-semibold">Backup amministratore</div>
-        <div className="text-sm text-gray-600 mb-3">
-          Scarica un backup completo del DB (JSON) e dei rapportini giorno per giorno in formato Excel o PDF.
-        </div>
+        <div className="text-sm text-gray-600 mb-3">Scarica un backup completo del DB (JSON) e dei rapportini giorno per giorno in formato Excel o PDF.</div>
         <div className="grid gap-3 md:grid-cols-3">
-          <button className="rounded-xl border px-4 py-2" onClick={runBackupJson} disabled={backuping}>
+          <button className="rounded-xl border px-4 py-2" onClick={runBackupJson} disabled={backuping || cleaning}>
             {backuping ? "Elaborazione..." : "Backup DB (JSON)"}
           </button>
-          <button className="rounded-xl bg-brand-orange px-4 py-2 text-white font-bold" onClick={runBackupExcel} disabled={backuping}>
+          <button className="rounded-xl bg-brand-orange px-4 py-2 text-white font-bold" onClick={runBackupExcel} disabled={backuping || cleaning}>
             {backuping ? "Elaborazione..." : "Rapportini Giornalieri (Excel)"}
           </button>
-          <button className="rounded-xl bg-black px-4 py-2 text-white" onClick={runBackupPdf} disabled={backuping}>
+          <button className="rounded-xl bg-black px-4 py-2 text-white" onClick={runBackupPdf} disabled={backuping || cleaning}>
             {backuping ? "Elaborazione..." : "Rapportini Giornalieri (PDF)"}
           </button>
         </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+        <div className="font-semibold text-red-700">Pulizia rapportini</div>
+        <div className="text-sm text-red-700/80 mb-3">Elimina tutti i rapportini per liberare spazio. Prima della cancellazione viene richiesto obbligatoriamente il backup.</div>
+        <button className="rounded-xl bg-red-600 px-4 py-2 text-white font-bold" onClick={runCleanupRapportini} disabled={cleaning || backuping}>
+          {cleaning ? "Pulizia in corso..." : "Pulisci rapportini"}
+        </button>
       </div>
     </div>
   );
