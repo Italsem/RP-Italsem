@@ -109,6 +109,10 @@ export default function DayCantiere() {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
+  function removeRow(id: string) {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+  }
+
   async function save() {
     // regole speciali:
     // - DIP: ordinario=giornate (0.33 ecc)
@@ -182,6 +186,7 @@ export default function DayCantiere() {
               <th>Pioggia</th>
               <th>Malattia</th>
               <th>Trasferta</th>
+              <th className="text-center">X</th>
             </tr>
           </thead>
           <tbody>
@@ -225,11 +230,20 @@ export default function DayCantiere() {
                 <td><Num v={r.pioggia} onChange={(v) => updateRow(r.id, { pioggia: v })} /></td>
                 <td><Num v={r.malattia} onChange={(v) => updateRow(r.id, { malattia: v })} /></td>
                 <td><Num v={r.trasferta} onChange={(v) => updateRow(r.id, { trasferta: v })} /></td>
+                <td className="text-center">
+                  <button
+                    className="rounded-full border border-red-300 px-2 py-0.5 text-xs font-bold text-red-600 hover:bg-red-50"
+                    onClick={() => removeRow(r.id)}
+                    title="Elimina riga"
+                  >
+                    ×
+                  </button>
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-4 text-black/60">
+                <td colSpan={10} className="py-4 text-black/60">
                   Nessuna riga. Aggiungi Operaio/Mezzo/Hotel.
                 </td>
               </tr>
