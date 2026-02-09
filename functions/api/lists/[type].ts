@@ -25,5 +25,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   }
 
   const rows = await ctx.env.DB.prepare(sql).bind(...binds).all<any>();
-  return json({ ok: true, items: rows.results || [] });
+  let items = rows.results || [];
+  if (type === "cantieri" && !items.find((x: any) => String(x.codice || "").toUpperCase() === "TIPO")) {
+    items = [{ codice: "TIPO", descrizione: "TIPO" }, ...items];
+  }
+  return json({ ok: true, items });
+
 };
