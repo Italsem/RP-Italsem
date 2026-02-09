@@ -13,6 +13,10 @@ export default function Admin() {
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"USER" | "ADMIN">("USER");
 
+  const [importType, setImportType] = useState<"cantieri" | "mezzi" | "dipendenti">("cantieri");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+
   const load = async () => {
     setErr(null);
     try {
@@ -33,6 +37,25 @@ export default function Admin() {
       alert("Utente creato!");
     } catch (e: any) {
       alert(e.message || "Errore");
+    }
+  };
+
+  const runImport = async () => {
+    if (!importFile) return alert("Seleziona un file Excel prima di importare");
+    setImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append("type", importType);
+      fd.append("file", importFile);
+      const r = await fetch("/api/admin/import", { method: "POST", credentials: "include", body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      alert(`Import completato ✅ Righe aggiornate: ${j.upserted ?? 0}`);
+      setImportFile(null);
+    } catch (e: any) {
+      alert(e.message || "Errore import");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -94,11 +117,22 @@ export default function Admin() {
         </div>
       </div>
 
-      {/* QUI sotto lasci la tua parte di import Excel già funzionante */}
       <div className="mt-4 rounded-2xl border bg-white p-4">
-        <div className="font-semibold">Import Excel</div>
-        <div className="text-sm text-gray-600">
-          Mantieni la tua sezione di import (cantieri/mezzi/dipendenti) già fatta.
+        <div className="font-semibold">Import Excel (cantieri / mezzi / operai)</div>
+        <div className="text-sm text-gray-600 mb-3">
+          Importa un file xlsx/xls/csv per aggiornare le anagrafiche. Se il codice esiste, la riga viene aggiornata.
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          <select className="rounded-xl border px-3 py-2" value={importType} onChange={(e) => setImportType(e.target.value as any)}>
+            <option value="cantieri">Cantieri</option>
+            <option value="mezzi">Mezzi</option>
+            <option value="dipendenti">Operai</option>
+          </select>
+          <input className="rounded-xl border px-3 py-2 md:col-span-2" type="file" accept=".xlsx,.xls,.csv" onChange={(e) => setImportFile(e.target.files?.[0] || null)} />
+          <button className="rounded-xl bg-brand-orange px-4 py-2 text-white font-bold" onClick={runImport} disabled={importing}>
+            {importing ? "Import in corso..." : "Importa / Aggiorna"}
+          </button>
         </div>
       </div>
     </div>

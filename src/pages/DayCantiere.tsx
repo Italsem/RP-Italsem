@@ -35,10 +35,11 @@ export default function DayCantiere() {
     () =>
       dip
         .map((d) => ({
-          code: d.Codice ?? "",
-          label: `${d.Codice} - ${d.Nome ?? ""} ${d.Cognome ?? ""} - ${d.Descrizione ?? ""}`.trim(),
+          code: d.codice ?? d.Codice ?? "",
+          desc: d.descrizione ?? `${d.cognome ?? ""} ${d.nome ?? ""}`.trim(),
         }))
-        .filter((x) => x.code && x.label),
+        .map((x) => ({ ...x, label: x.desc }))
+        .filter((x) => x.code && x.desc),
     [dip]
   );
 
@@ -46,10 +47,11 @@ export default function DayCantiere() {
     () =>
       mezzi
         .map((m) => ({
-          code: m.Codice ?? "",
-          label: `${m.Codice} - ${m.Descrizione ?? ""}`.trim(),
+          code: m.codice ?? m.Codice ?? "",
+          desc: m.descrizione ?? m.Descrizione ?? "",
         }))
-        .filter((x) => x.code && x.label),
+        .map((x) => ({ ...x, label: x.desc }))
+        .filter((x) => x.code && x.desc),
     [mezzi]
   );
 
@@ -199,7 +201,14 @@ export default function DayCantiere() {
                     className="border rounded px-2 py-1 w-96"
                     list={r.type === "DIP" ? "dl-dip" : r.type === "MEZZO" ? "dl-mezzi" : undefined}
                     value={r.desc}
-                    onChange={(e) => updateRow(r.id, { desc: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (r.type === "HOTEL") return updateRow(r.id, { desc: val });
+                      const opts = r.type === "DIP" ? dipOpt : mezziOpt;
+                      const found = opts.find((o) => o.label === val);
+                      if (found) return updateRow(r.id, { code: found.code, desc: found.desc });
+                      updateRow(r.id, { desc: val });
+                    }}
                     placeholder={r.type === "HOTEL" ? "HOTEL 01/02 (descr)" : "autocomplete..."}
                   />
                 </td>

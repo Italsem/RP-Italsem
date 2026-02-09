@@ -55,8 +55,8 @@ export default function Dashboard() {
           throw new Error(msg || `Errore caricamento: ${res.status}`);
         }
 
-        const data = await safeJson<{ rows: ActiveCantiere[] }>(res);
-        if (!aborted) setRows(Array.isArray(data.rows) ? data.rows : []);
+        const data = await safeJson<ActiveCantiere[]>(res);
+        if (!aborted) setRows(Array.isArray(data) ? data : []);
       } catch (e: any) {
         if (!aborted) {
           setRows([]);

@@ -9,7 +9,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   if (!username || !password) return badRequest("Missing username/password");
 
   const u = await ctx.env.DB.prepare(
-    `SELECT id, username, password_hash, salt, role, is_active
+    `SELECT id, username, password_hash, salt, role, is_active, first_name, last_name
      FROM users WHERE username=? LIMIT 1`
   ).bind(username).first<any>();
 
@@ -22,7 +22,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async (ctx) => {
 
   const sid = await createSession(ctx, u.id);
   return json(
-    { ok: true, user: { id: u.id, username: u.username, role: u.role } },
+    { ok: true, user: { id: u.id, username: u.username, role: u.role, firstName: u.first_name ?? "", lastName: u.last_name ?? "" } },
     { headers: { "Set-Cookie": setSessionCookie(sid) } }
   );
 };

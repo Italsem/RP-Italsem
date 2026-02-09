@@ -1,5 +1,20 @@
-// functions/api/export_presenze_range.ts
 import { json, badRequest, requireAuth } from "./_auth";
+
+type OutRow = {
+  data: string;
+  cantiere_codice: string;
+  cantiere_desc?: string;
+  cantiere_internal_desc?: string;
+  tipo: string;
+  risorsa_codice: string;
+  risorsa_descrizione: string;
+  ordinario: number;
+  notturno: number;
+  pioggia: number;
+  malattia: number;
+  trasferta: number;
+  note: string;
+};
 
 export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   const a = await requireAuth(ctx);
@@ -12,7 +27,48 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   if (!from || !to) return badRequest("Missing from/to");
   if (from > to) return badRequest("Invalid range");
 
-  // Nota: assumo data salvata come YYYY-MM-DD in movimenti.data
+  const daySheets = await ctx.env.DB.prepare(
+    `SELECT work_date, cantiere_code, cantiere_desc, payload
+     FROM day_sheets
+     WHERE work_date >= ? AND work_date <= ?
+     ORDER BY work_date ASC, cantiere_code ASC`
+  ).bind(from, to).all<any>();
+
+  const out: OutRow[] = [];
+
+  for (const s of daySheets.results || []) {
+    const payload = JSON.parse(s.payload || "{}");
+    const internalDesc = String(payload.internal_desc || "").trim();
+    for (const row of payload.rows || []) {
+      const day = row.days?.[s.work_date] || {};
+      out.push({
+        data: s.work_date,
+        cantiere_codice: row.cantiere || s.cantiere_code || "",
+        cantiere_desc: s.cantiere_desc || "",
+        cantiere_internal_desc: internalDesc,
+        tipo: row.tipo || row.type || "",
+        risorsa_codice: row.codice || row.code || "",
+        risorsa_descrizione: row.descrizione || row.desc || row.name || "",
+        ordinario: Number(day.ordinario ?? row.ordinario ?? 0) || 0,
+        notturno: Number(day.notturno ?? row.notturno ?? 0) || 0,
+        pioggia: Number(day.pioggia ?? row.pioggia ?? 0) || 0,
+        malattia: Number(day.malattia ?? row.malattia ?? 0) || 0,
+        trasferta: Number(day.trasferta ?? row.trasferta ?? 0) || 0,
+        note: String(day.note ?? row.note ?? ""),
+      });
+    }
+  }
+
+  if (out.length > 0) {
+    out.sort((a, b) =>
+      a.data.localeCompare(b.data) ||
+      a.cantiere_codice.localeCompare(b.cantiere_codice) ||
+      a.tipo.localeCompare(b.tipo) ||
+      a.risorsa_codice.localeCompare(b.risorsa_codice)
+    );
+    return json({ ok: true, rows: out });
+  }
+
   const rows = await ctx.env.DB.prepare(
     `SELECT
         data,
