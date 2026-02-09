@@ -1,57 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiGet, apiPost } from "../lib/api";
-import Autocomplete from "../components/Autocomplete";
+import { Link } from "react-router-dom";
 
-type Active = { work_date: string; cantiere_code: string; cantiere_desc: string; updated_at: string };
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-export default function Dashboard() {
-  const [date, setDate] = useState(todayISO());
-  const [list, setList] = useState<Active[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-
-  const load = useMemo(() => async () => {
-    setErr(null);
-    try {
-      const r = await apiGet<{ rows: Active[] }>(`/api/day/active?date=${encodeURIComponent(date)}`);
-      setList(r.rows || []);
-    } catch (e: any) {
-      setErr(e.message || "Errore");
-    }
-  }, [date]);
-
-  useEffect(() => { load(); }, [load]);
-
-  return (
-    <div className="mx-auto max-w-5xl p-4">
-      <div className="mb-4 flex items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard giornaliera</h1>
-          <div className="text-sm text-gray-600">Seleziona una data: vedi i cantieri “attivi” quel giorno.</div>
-        </div>
-        <div className="flex gap-2">
-          <input className="rounded-xl border px-3 py-2" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <button className="rounded-xl border px-4 py-2" onClick={() => setAdding(true)}>+ Aggiungi cantiere</button>
-        </div>
-      </div>
-
-      {err && <div className="mb-3 rounded-xl border border-red-300 bg-red-50 p-3 text-red-700">{err}</div>}
-
-      <div className="rounded-2xl border bg-white">
-        <div className="border-b p-3 font-semibold">Cantieri del {date}</div>
-import { useEffect, useMemo, useState } from "react";
-import { apiGet, apiPost } from "../lib/api";
-import Autocomplete from "../components/Autocomplete";
-
-type Active = { work_date: string; cantiere_code: string; cantiere_desc: string; updated_at: string };
+type ActiveCantiere = {
+  work_date: string;
+  cantiere_code: string;
+  cantiere_desc: string;
+  updated_at?: string;
+};
 
 function todayISO() {
   const d = new Date();
@@ -61,87 +16,175 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export default function Dashboard() {
-  const [date, setDate] = useState(todayISO());
-  const [list, setList] = useState<Active[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
+async function safeJson<T>(res: Response): Promise<T> {
+  const txt = await res.text();
+  try {
+    return JSON.parse(txt) as T;
+  } catch {
+    throw new Error(txt || `HTTP ${res.status}`);
+  }
+}
 
-  const load = useMemo(() => async () => {
-    setErr(null);
-    try {
-      const r = await apiGet<{ rows: Active[] }>(`/api/day/active?date=${encodeURIComponent(date)}`);
-      setList(r.rows || []);
-    } catch (e: any) {
-      setErr(e.message || "Errore");
-    }
+export default function Dashboard() {
+  const [date, setDate] = useState<string>(todayISO());
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [rows, setRows] = useState<ActiveCantiere[]>([]);
+
+  const prettyDate = useMemo(() => {
+    // visualizzazione semplice IT
+    const [y, m, d] = date.split("-");
+    if (!y || !m || !d) return date;
+    return `${d}/${m}/${y}`;
   }, [date]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let aborted = false;
+
+    async function load() {
+      setLoading(true);
+      setErr(null);
+      try {
+        const res = await fetch(`/api/day/active?date=${encodeURIComponent(date)}`, {
+          credentials: "include",
+          headers: { "Accept": "application/json" },
+        });
+
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || `Errore caricamento: ${res.status}`);
+        }
+
+        const data = await safeJson<{ rows: ActiveCantiere[] }>(res);
+        if (!aborted) setRows(Array.isArray(data.rows) ? data.rows : []);
+      } catch (e: any) {
+        if (!aborted) {
+          setRows([]);
+          setErr(e?.message || "Errore sconosciuto");
+        }
+      } finally {
+        if (!aborted) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      aborted = true;
+    };
+  }, [date]);
 
   return (
-    <div className="mx-auto max-w-5xl p-4">
-      <div className="mb-4 flex items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard giornaliera</h1>
-          <div className="text-sm text-gray-600">Seleziona una data: vedi i cantieri “attivi” quel giorno.</div>
-        </div>
-        <div className="flex gap-2">
-          <input className="rounded-xl border px-3 py-2" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          <button className="rounded-xl border px-4 py-2" onClick={() => setAdding(true)}>+ Aggiungi cantiere</button>
-        </div>
-      </div>
-
-      {err && <div className="mb-3 rounded-xl border border-red-300 bg-red-50 p-3 text-red-700">{err}</div>}
-
-      <div className="rounded-2xl border bg-white">
-        <div className="border-b p-3 font-semibold">Cantieri del {date}</div>
-        {list.length === 0 ? (
-          <div className="p-4 text-gray-600">Nessun cantiere attivo per questa giornata.</div>
-        ) : (
-          <div className="divide-y">
-            {list.map((c) => (
-              <a key={c.cantiere_code} className="block p-4 hover:bg-gray-50"
-                 href={`/day?date=${encodeURIComponent(date)}&cantiere=${encodeURIComponent(c.cantiere_code)}`}>
-                <div className="font-semibold">{c.cantiere_code} — {c.cantiere_desc}</div>
-                <div className="text-sm text-gray-600">Ultimo aggiornamento: {c.updated_at}</div>
-              </a>
-            ))}
+    <div className="min-h-screen bg-gray-50 text-gray-900">
+      {/* Header */}
+      <header className="border-b bg-white">
+        <div className="mx-auto max-w-5xl px-4 py-4 flex items-center gap-3">
+          <img
+            src="/logo.png"
+            alt="Italsem"
+            className="h-10 w-10 rounded-md object-contain"
+          />
+          <div className="flex-1">
+            <div className="text-lg font-semibold leading-tight">Rapportini Italsem</div>
+            <div className="text-sm text-gray-500">Dashboard</div>
           </div>
-        )}
-      </div>
 
-      {adding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-4 shadow">
-            <div className="mb-2 text-lg font-bold">Aggiungi cantiere alla giornata</div>
-            <div className="mb-3 text-sm text-gray-600">Cerca cantiere (autocomplete) e conferma.</div>
+          <nav className="flex items-center gap-3">
+            <Link
+              to="/export"
+              className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50"
+            >
+              Export
+            </Link>
+            <Link
+              to="/admin"
+              className="rounded-md bg-black px-3 py-2 text-sm text-white hover:opacity-90"
+            >
+              Admin
+            </Link>
+          </nav>
+        </div>
+      </header>
 
-            <Autocomplete
-              type="cantieri"
-              placeholder="Cerca cantiere per codice o descrizione"
-              onSelect={async (it) => {
-                try {
-                  await apiPost("/api/day/add_cantiere", {
-                    work_date: date,
-                    cantiere_code: it.codice,
-                    cantiere_desc: it.descrizione,
-                  });
-                  setAdding(false);
-                  await load();
-                } catch (e: any) {
-                  alert(e.message || "Errore");
-                }
-              }}
-            />
+      {/* Content */}
+      <main className="mx-auto max-w-5xl px-4 py-6">
+        <div className="rounded-xl bg-white shadow-sm border p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-sm text-gray-500">Data selezionata</div>
+              <div className="text-xl font-semibold">{prettyDate}</div>
+            </div>
 
-            <div className="mt-4 flex justify-end gap-2">
-              <button className="rounded-xl border px-4 py-2" onClick={() => setAdding(false)}>Chiudi</button>
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col">
+                <label className="text-sm text-gray-600" htmlFor="date">
+                  Scegli data
+                </label>
+                <input
+                  id="date"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="rounded-md border px-3 py-2"
+                />
+              </div>
             </div>
           </div>
+
+          <div className="mt-4">
+            {loading && (
+              <div className="text-sm text-gray-600">Caricamento cantieri...</div>
+            )}
+
+            {err && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {err}
+              </div>
+            )}
+
+            {!loading && !err && rows.length === 0 && (
+              <div className="text-sm text-gray-600">
+                Nessun cantiere trovato per questa data.
+              </div>
+            )}
+
+            {!loading && !err && rows.length > 0 && (
+              <div className="mt-3 overflow-hidden rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Codice</th>
+                      <th className="px-3 py-2 text-left">Cantiere</th>
+                      <th className="px-3 py-2 text-right">Apri</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={`${r.work_date}-${r.cantiere_code}`} className="border-t">
+                        <td className="px-3 py-2 font-mono">{r.cantiere_code}</td>
+                        <td className="px-3 py-2">{r.cantiere_desc}</td>
+                        <td className="px-3 py-2 text-right">
+                          <Link
+                            to={`/day?date=${encodeURIComponent(r.work_date)}&code=${encodeURIComponent(
+                              r.cantiere_code
+                            )}`}
+                            className="rounded-md border px-3 py-1.5 hover:bg-gray-50"
+                          >
+                            Apri
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+
+        <div className="mt-4 text-xs text-gray-400">
+          Logo: <span className="font-mono">public/logo.png</span>
+        </div>
+      </main>
     </div>
   );
 }
-
