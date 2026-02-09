@@ -29,6 +29,17 @@ export default function AppLayout() {
           </Link>
 
           <div className="flex items-center gap-3">
+            <Link to="/dashboard" className="px-3 py-2 rounded-lg border border-black/10 text-sm font-semibold hover:bg-black/5">
+              Dashboard
+            </Link>
+            <Link to="/export" className="px-3 py-2 rounded-lg border border-black/10 text-sm font-semibold hover:bg-black/5">
+              Export
+            </Link>
+            {user?.role === "ADMIN" && (
+              <Link to="/admin" className="px-3 py-2 rounded-lg border border-black/10 text-sm font-semibold hover:bg-black/5">
+                Admin
+              </Link>
+            )}
             <span className="hidden sm:inline text-sm text-black/60">
               👤 {fullName}
             </span>
