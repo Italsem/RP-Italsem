@@ -16,6 +16,8 @@ type DayRow = {
   trasferta: number;
 };
 
+type ListsResponse<T> = { ok: true; items: T[] };
+
 function qparam(name: string) {
   return new URLSearchParams(window.location.search).get(name) ?? "";
 }
@@ -29,28 +31,50 @@ export default function DayCantiere() {
   const [dip, setDip] = useState<any[]>([]);
   const [mezzi, setMezzi] = useState<any[]>([]);
 
-  const dipOpt = useMemo(() => dip.map(d => ({
-    code: d.Codice ?? "",
-    label: `${d.Codice} - ${d.Nome ?? ""} ${d.Cognome ?? ""} - ${d.Descrizione ?? ""}`.trim()
-  })).filter(x=>x.code && x.label), [dip]);
+  const dipOpt = useMemo(
+    () =>
+      dip
+        .map((d) => ({
+          code: d.Codice ?? "",
+          label: `${d.Codice} - ${d.Nome ?? ""} ${d.Cognome ?? ""} - ${d.Descrizione ?? ""}`.trim(),
+        }))
+        .filter((x) => x.code && x.label),
+    [dip]
+  );
 
-  const mezziOpt = useMemo(() => mezzi.map(m => ({
-    code: m.Codice ?? "",
-    label: `${m.Codice} - ${m.Descrizione ?? ""}`.trim()
-  })).filter(x=>x.code && x.label), [mezzi]);
+  const mezziOpt = useMemo(
+    () =>
+      mezzi
+        .map((m) => ({
+          code: m.Codice ?? "",
+          label: `${m.Codice} - ${m.Descrizione ?? ""}`.trim(),
+        }))
+        .filter((x) => x.code && x.label),
+    [mezzi]
+  );
 
   useEffect(() => {
     (async () => {
-      const [d, m] = await Promise.all([
-        apiGet<any[]>("/api/lists/dipendenti"),
-        apiGet<any[]>("/api/lists/mezzi"),
-      ]);
-      setDip(d); setMezzi(m);
+      try {
+        const [dRes, mRes] = await Promise.all([
+          apiGet<ListsResponse<any>>("/api/lists/dipendenti"),
+          apiGet<ListsResponse<any>>("/api/lists/mezzi"),
+        ]);
+        setDip(Array.isArray(dRes?.items) ? dRes.items : []);
+        setMezzi(Array.isArray(mRes?.items) ? mRes.items : []);
+      } catch (e: any) {
+        // Non facciamo crashare tutta la pagina se l'API risponde male
+        console.error(e);
+        setDip([]);
+        setMezzi([]);
+      }
     })();
   }, []);
 
   async function load() {
-    const r = await apiGet<any>(`/api/day/sheet?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(cantiere_code)}`);
+    const r = await apiGet<any>(
+      `/api/day/sheet?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(cantiere_code)}`
+    );
     setDesc(r.cantiere_desc);
     setRows(r.payload?.rows ?? []);
   }
@@ -58,25 +82,29 @@ export default function DayCantiere() {
   useEffect(() => {
     if (!date || !cantiere_code) return;
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function addRow(type: RowType) {
-    setRows(prev => [...prev, {
-      id: crypto.randomUUID(),
-      type,
-      code: "",
-      desc: "",
-      note: "",
-      ordinario: 0,
-      notturno: 0,
-      pioggia: 0,
-      malattia: 0,
-      trasferta: 0,
-    }]);
+    setRows((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        type,
+        code: "",
+        desc: "",
+        note: "",
+        ordinario: 0,
+        notturno: 0,
+        pioggia: 0,
+        malattia: 0,
+        trasferta: 0,
+      },
+    ]);
   }
 
   function updateRow(id: string, patch: Partial<DayRow>) {
-    setRows(prev => prev.map(r => r.id===id ? { ...r, ...patch } : r));
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
   async function save() {
@@ -88,7 +116,7 @@ export default function DayCantiere() {
       work_date: date,
       cantiere_code,
       cantiere_desc,
-      payload: { rows }
+      payload: { rows },
     });
     alert("Salvato ✅");
   }
@@ -98,26 +126,46 @@ export default function DayCantiere() {
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-3xl font-extrabold">Compilazione Giornata</h1>
-          <p className="text-sm text-black/60">{date} — {cantiere_code} — {cantiere_desc}</p>
+          <p className="text-sm text-black/60">
+            {date} — {cantiere_code} — {cantiere_desc}
+          </p>
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={()=>history.back()}>
+          <button className="px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={() => history.back()}>
             Indietro
           </button>
-          <button className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90" onClick={save}>
+          <button
+            className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90"
+            onClick={save}
+          >
             Salva
           </button>
         </div>
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <button className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold" onClick={()=>addRow("DIP")}>+ Operaio</button>
-        <button className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold" onClick={()=>addRow("MEZZO")}>+ Mezzo</button>
-        <button className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold" onClick={()=>addRow("HOTEL")}>+ Hotel</button>
+        <button
+          className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold"
+          onClick={() => addRow("DIP")}
+        >
+          + Operaio
+        </button>
+        <button
+          className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold"
+          onClick={() => addRow("MEZZO")}
+        >
+          + Mezzo
+        </button>
+        <button
+          className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold"
+          onClick={() => addRow("HOTEL")}
+        >
+          + Hotel
+        </button>
       </div>
 
-      <datalist id="dl-dip">{dipOpt.map((x,i)=><option key={i} value={x.label} />)}</datalist>
-      <datalist id="dl-mezzi">{mezziOpt.map((x,i)=><option key={i} value={x.label} />)}</datalist>
+      <datalist id="dl-dip">{dipOpt.map((x, i) => <option key={i} value={x.label} />)}</datalist>
+      <datalist id="dl-mezzi">{mezziOpt.map((x, i) => <option key={i} value={x.label} />)}</datalist>
 
       <div className="bg-white border border-black/10 rounded-2xl p-4 overflow-auto">
         <table className="min-w-[1100px] w-full text-sm">
@@ -135,57 +183,66 @@ export default function DayCantiere() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(r=>(
+            {rows.map((r) => (
               <tr key={r.id} className="border-b border-black/5 align-top">
                 <td className="py-2 font-extrabold">{r.type}</td>
                 <td>
-                  <input className="border rounded px-2 py-1 w-24"
+                  <input
+                    className="border rounded px-2 py-1 w-24"
                     value={r.code}
-                    onChange={(e)=>updateRow(r.id,{code:e.target.value})}
-                    placeholder={r.type==="HOTEL"?"H01/H02":""}
+                    onChange={(e) => updateRow(r.id, { code: e.target.value })}
+                    placeholder={r.type === "HOTEL" ? "H01/H02" : ""}
                   />
                 </td>
                 <td>
                   <input
                     className="border rounded px-2 py-1 w-96"
-                    list={r.type==="DIP" ? "dl-dip" : r.type==="MEZZO" ? "dl-mezzi" : undefined}
+                    list={r.type === "DIP" ? "dl-dip" : r.type === "MEZZO" ? "dl-mezzi" : undefined}
                     value={r.desc}
-                    onChange={(e)=>updateRow(r.id,{desc:e.target.value})}
-                    placeholder={r.type==="HOTEL" ? "HOTEL 01/02 (descr)" : "autocomplete..."}
+                    onChange={(e) => updateRow(r.id, { desc: e.target.value })}
+                    placeholder={r.type === "HOTEL" ? "HOTEL 01/02 (descr)" : "autocomplete..."}
                   />
                 </td>
                 <td>
-                  <input className="border rounded px-2 py-1 w-72"
+                  <input
+                    className="border rounded px-2 py-1 w-72"
                     value={r.note}
-                    onChange={(e)=>updateRow(r.id,{note:e.target.value})}
-                    placeholder={r.type==="MEZZO" ? "AUTISTA: Nome" : r.type==="HOTEL" ? "Nome hotel" : ""}
+                    onChange={(e) => updateRow(r.id, { note: e.target.value })}
+                    placeholder={r.type === "MEZZO" ? "AUTISTA: Nome" : r.type === "HOTEL" ? "Nome hotel" : ""}
                   />
                 </td>
-                <td><Num v={r.ordinario} onChange={(v)=>updateRow(r.id,{ordinario:v})} /></td>
-                <td><Num v={r.notturno} onChange={(v)=>updateRow(r.id,{notturno:v})} /></td>
-                <td><Num v={r.pioggia} onChange={(v)=>updateRow(r.id,{pioggia:v})} /></td>
-                <td><Num v={r.malattia} onChange={(v)=>updateRow(r.id,{malattia:v})} /></td>
-                <td><Num v={r.trasferta} onChange={(v)=>updateRow(r.id,{trasferta:v})} /></td>
+                <td><Num v={r.ordinario} onChange={(v) => updateRow(r.id, { ordinario: v })} /></td>
+                <td><Num v={r.notturno} onChange={(v) => updateRow(r.id, { notturno: v })} /></td>
+                <td><Num v={r.pioggia} onChange={(v) => updateRow(r.id, { pioggia: v })} /></td>
+                <td><Num v={r.malattia} onChange={(v) => updateRow(r.id, { malattia: v })} /></td>
+                <td><Num v={r.trasferta} onChange={(v) => updateRow(r.id, { trasferta: v })} /></td>
               </tr>
             ))}
-            {rows.length===0 && <tr><td colSpan={9} className="py-4 text-black/60">Nessuna riga. Aggiungi Operaio/Mezzo/Hotel.</td></tr>}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={9} className="py-4 text-black/60">
+                  Nessuna riga. Aggiungi Operaio/Mezzo/Hotel.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
       <div className="text-sm text-black/60">
-        Regole: <b>Ordinario</b> per operai è “giornate” (0.33 ecc). Mezzo: se usato metti <b>Ordinario=1</b> e in note scrivi <b>AUTISTA: ...</b>. Hotel: <b>code H01/H02</b>, ordinario = persone, note = nome hotel.
+        Regole: <b>Ordinario</b> per operai è “giornate” (0.33 ecc). Mezzo: se usato metti <b>Ordinario=1</b> e in
+        note scrivi <b>AUTISTA: ...</b>. Hotel: <b>code H01/H02</b>, ordinario = persone, note = nome hotel.
       </div>
     </div>
   );
 }
 
-function Num({ v, onChange }: { v: number; onChange: (n:number)=>void }) {
+function Num({ v, onChange }: { v: number; onChange: (n: number) => void }) {
   return (
     <input
       className="border rounded px-2 py-1 w-20"
       value={String(v ?? 0)}
-      onChange={(e)=>onChange(Number(String(e.target.value).replace(",", ".")) || 0)}
+      onChange={(e) => onChange(Number(String(e.target.value).replace(",", ".")) || 0)}
     />
   );
 }

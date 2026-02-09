@@ -4,12 +4,13 @@ import { apiGet, apiPost } from "../lib/api";
 function todayISO() {
   const d = new Date();
   const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,"0");
-  const dd = String(d.getDate()).padStart(2,"0");
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
 
 type Cantiere = any;
+type ListsResponse<T> = { ok: true; items: T[] };
 
 export default function DashboardDay() {
   const [date, setDate] = useState(todayISO());
@@ -18,39 +19,66 @@ export default function DashboardDay() {
   const [addCode, setAddCode] = useState("");
   const [addDesc, setAddDesc] = useState("");
 
-  const cantieriOptions = useMemo(() => cantieri.map(c => ({
-    code: c.Codice ?? c.codice ?? c.code ?? "",
-    desc: c.Descrizione ?? c.descrizione ?? c.desc ?? ""
-  })).filter(x=>x.code && x.desc), [cantieri]);
+  const cantieriOptions = useMemo(
+    () =>
+      cantieri
+        .map((c) => ({
+          code: c.Codice ?? c.codice ?? c.code ?? "",
+          desc: c.Descrizione ?? c.descrizione ?? c.desc ?? "",
+        }))
+        .filter((x) => x.code && x.desc),
+    [cantieri]
+  );
 
   useEffect(() => {
     (async () => {
-      const list = await apiGet<Cantiere[]>("/api/lists/cantieri");
-      setCantieri(list);
+      try {
+        const res = await apiGet<ListsResponse<Cantiere>>("/api/lists/cantieri");
+        setCantieri(Array.isArray(res?.items) ? res.items : []);
+      } catch (e) {
+        console.error(e);
+        setCantieri([]);
+      }
     })();
   }, []);
 
   async function loadActive() {
-    const r = await apiGet<any[]>(`/api/day/active?date=${encodeURIComponent(date)}`);
-    setActive(r);
+    try {
+      const r = await apiGet<any[]>(`/api/day/active?date=${encodeURIComponent(date)}`);
+      setActive(Array.isArray(r) ? r : []);
+    } catch (e) {
+      console.error(e);
+      setActive([]);
+    }
   }
 
-  useEffect(() => { loadActive(); }, [date]);
+  useEffect(() => {
+    loadActive();
+  }, [date]);
 
   function onPickCantiere(v: string) {
     // v = "CODICE - DESCR"
     const m = v.match(/^(.+?)\s-\s(.*)$/);
-    if (m) { setAddCode(m[1]); setAddDesc(m[2]); }
-    else { setAddCode(""); setAddDesc(v); }
+    if (m) {
+      setAddCode(m[1]);
+      setAddDesc(m[2]);
+    } else {
+      setAddCode("");
+      setAddDesc(v);
+    }
   }
 
   async function addCantiereToDay() {
-    if (!addCode || !addDesc) { alert("Seleziona un cantiere"); return; }
+    if (!addCode || !addDesc) {
+      alert("Seleziona un cantiere");
+      return;
+    }
 
     // creo uno sheet vuoto (payload standard)
     const payload = { rows: [] };
     await apiPost("/api/day/sheet", { work_date: date, cantiere_code: addCode, cantiere_desc: addDesc, payload });
-    setAddCode(""); setAddDesc("");
+    setAddCode("");
+    setAddDesc("");
     await loadActive();
   }
 
@@ -64,7 +92,12 @@ export default function DashboardDay() {
 
         <div className="flex items-center gap-2">
           <div className="text-sm font-semibold">Data</div>
-          <input type="date" className="border rounded-lg px-3 py-2" value={date} onChange={(e)=>setDate(e.target.value)} />
+          <input
+            type="date"
+            className="border rounded-lg px-3 py-2"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
         </div>
       </div>
 
@@ -81,13 +114,10 @@ export default function DashboardDay() {
           className="border rounded-lg px-3 py-2 w-full"
           placeholder="Cerca cantiere (autocomplete)..."
           list="dl-cantieri"
-          onChange={(e)=>onPickCantiere(e.target.value)}
+          onChange={(e) => onPickCantiere(e.target.value)}
         />
 
-        <button
-          className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90"
-          onClick={addCantiereToDay}
-        >
+        <button className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90" onClick={addCantiereToDay}>
           Crea / Aggiungi
         </button>
       </div>
@@ -96,7 +126,7 @@ export default function DashboardDay() {
         <div className="font-bold text-lg mb-3">Cantieri attivi ({active.length})</div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          {active.map((c:any)=>(
+          {active.map((c: any) => (
             <a
               key={c.cantiere_code}
               className="border border-black/10 rounded-xl p-4 hover:bg-black/5 transition block"
@@ -107,7 +137,7 @@ export default function DashboardDay() {
               <div className="text-xs text-black/50 mt-1">Aggiornato: {c.updated_at}</div>
             </a>
           ))}
-          {active.length===0 && <div className="text-sm text-black/60">Nessun cantiere per questa data.</div>}
+          {active.length === 0 && <div className="text-sm text-black/60">Nessun cantiere per questa data.</div>}
         </div>
       </div>
     </div>
