@@ -55,6 +55,10 @@ export default function Inserimento() {
     setRows(r => r.map(x => x.id===id ? {...x, ...patch} : x));
   }
 
+  function removeRow(id:string) {
+    setRows(r => r.filter(x => x.id !== id));
+  }
+
   function setDay(id:string, day:string, patch: Partial<{ordinario:number; note:string}>) {
     setRows(r => r.map(x => {
       if (x.id!==id) return x;
@@ -117,6 +121,7 @@ export default function Inserimento() {
               <th>Descrizione</th>
               <th>Note Riga</th>
               {days.map(d => <th key={d} className="px-2">{d.slice(8,10)}</th>)}
+              <th className="px-2 text-center">X</th>
             </tr>
           </thead>
           <tbody>
@@ -174,6 +179,15 @@ export default function Inserimento() {
                     />
                   </td>
                 ))}
+                <td className="px-2 text-center">
+                  <button
+                    className="rounded-full border border-red-300 px-2 py-0.5 text-xs font-bold text-red-600 hover:bg-red-50"
+                    onClick={() => removeRow(row.id)}
+                    title="Elimina riga"
+                  >
+                    ×
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
