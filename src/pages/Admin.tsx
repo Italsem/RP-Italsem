@@ -33,11 +33,26 @@ function formatBytes(bytes: number) {
 }
 
 type U = { id: number; username: string; role: "ADMIN" | "USER"; is_active: number; first_name?: string; last_name?: string; created_at?: string };
+type DailyPresence = {
+  data: string;
+  cantiere_code?: string;
+  cantiere_desc?: string;
+  tipo: string;
+  codice: string;
+  descrizione: string;
+  note_riga?: string;
+  ordinario?: number;
+  notturno?: number;
+  pioggia?: number;
+  malattia?: number;
+  trasferta?: number;
+};
 type BackupResp = {
   ok: true;
   generated_at: string;
+  source?: string;
   tables: Record<string, Record<string, any>[]>;
-  rapportini_daily: Record<string, any>[];
+  rapportini_daily: DailyPresence[];
 };
 type StorageResp = {
   ok: true;
@@ -76,7 +91,7 @@ export default function Admin() {
   const loadStorage = async () => {
     setStorageLoading(true);
     try {
-      const s = await apiGet<StorageResp>("/api/admin/storage");
+      const s = await apiGet<StorageResp>(`/api/admin/storage?t=${Date.now()}`);
       setStorage(s);
     } finally {
       setStorageLoading(false);
@@ -131,7 +146,7 @@ export default function Admin() {
     }
   };
 
-  const getBackupData = async () => apiGet<BackupResp>("/api/admin/backup");
+  const getBackupData = async () => apiGet<BackupResp>(`/api/admin/backup?t=${Date.now()}`);
 
   const runBackupJson = async () => {
     setBackuping(true);
@@ -139,6 +154,7 @@ export default function Admin() {
       const data = await getBackupData();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
       downloadBlob(blob, `backup_db_${data.generated_at.slice(0, 10)}.json`);
+      await loadStorage();
       return true;
     } catch (e: any) {
       alert(e.message || "Errore backup DB");
@@ -154,16 +170,37 @@ export default function Admin() {
       const data = await getBackupData();
       const wb = XLSX.utils.book_new();
 
-      const wsDaily = XLSX.utils.json_to_sheet(data.rapportini_daily || []);
-      XLSX.utils.book_append_sheet(wb, wsDaily, "rapportini_giorno");
+      const flatRows = data.rapportini_daily || [];
+      const wsFlat = XLSX.utils.json_to_sheet(flatRows);
+      XLSX.utils.book_append_sheet(wb, wsFlat, "presenze_raw");
+
+      const byDay: Record<string, DailyPresence[]> = {};
+      for (const row of flatRows) {
+        const day = row.data || "SENZA_DATA";
+        byDay[day] = byDay[day] || [];
+        byDay[day].push(row);
+      }
+
+      Object.keys(byDay)
+        .sort()
+        .forEach((day) => {
+          const rows = [...byDay[day]].sort((a, b) => {
+            const ac = `${a.cantiere_code || ""} ${a.cantiere_desc || ""}`;
+            const bc = `${b.cantiere_code || ""} ${b.cantiere_desc || ""}`;
+            return ac.localeCompare(bc);
+          });
+          const ws = XLSX.utils.json_to_sheet(rows);
+          XLSX.utils.book_append_sheet(wb, ws, day.slice(0, 31));
+        });
 
       Object.entries(data.tables || {}).forEach(([name, rows]) => {
         const ws = XLSX.utils.json_to_sheet(rows || []);
-        XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+        XLSX.utils.book_append_sheet(wb, ws, `tbl_${name}`.slice(0, 31));
       });
 
       const arr = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
       downloadBlob(new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `backup_rapportini_${data.generated_at.slice(0, 10)}.xlsx`);
+      await loadStorage();
     } catch (e: any) {
       alert(e.message || "Errore backup Excel");
     } finally {
@@ -175,36 +212,60 @@ export default function Admin() {
     setBackuping(true);
     try {
       const data = await getBackupData();
-      const grouped: Record<string, Record<string, any>[]> = {};
+      const byDay: Record<string, DailyPresence[]> = {};
       for (const row of data.rapportini_daily || []) {
         const key = row.data || "SENZA_DATA";
-        grouped[key] = grouped[key] || [];
-        grouped[key].push(row);
+        byDay[key] = byDay[key] || [];
+        byDay[key].push(row);
       }
 
       const content: any[] = [
-        { text: "Backup rapportini giorno per giorno", style: "title" },
-        { text: `Generato il: ${data.generated_at}`, style: "subtitle", margin: [0, 0, 0, 8] },
+        { text: "Backup presenze (giorno -> cantiere)", style: "title" },
+        { text: `Generato il: ${data.generated_at} • Fonte: ${data.source || "n/d"}`, style: "subtitle", margin: [0, 0, 0, 8] },
       ];
 
-      Object.keys(grouped)
+      Object.keys(byDay)
         .sort()
-        .forEach((day, idx) => {
-          const body = [["Tipo", "Cantiere", "Codice", "Descrizione", "Ordinario", "Note"]];
-          grouped[day].forEach((r) => {
-            body.push([r.tipo || "", r.cantiere || "", r.codice || "", r.descrizione || "", String(r.ordinario ?? 0), `${r.note_riga || ""} ${r.note_giorno || ""}`.trim()]);
-          });
+        .forEach((day, idxDay) => {
+          content.push({ text: `Data: ${day}`, bold: true, margin: [0, idxDay === 0 ? 0 : 10, 0, 4] });
 
-          content.push({ text: day, bold: true, margin: [0, idx === 0 ? 0 : 10, 0, 4] });
-          content.push({ table: { headerRows: 1, widths: [45, 110, 60, "*", 55, 150], body }, fontSize: 8, layout: "lightHorizontalLines" });
+          const byCantiere: Record<string, DailyPresence[]> = {};
+          for (const r of byDay[day]) {
+            const k = [r.cantiere_code || "SENZA_CANTIERE", r.cantiere_desc || ""].join(" — ");
+            byCantiere[k] = byCantiere[k] || [];
+            byCantiere[k].push(r);
+          }
+
+          Object.keys(byCantiere)
+            .sort()
+            .forEach((cant) => {
+              const body = [["Tipo", "Codice", "Descrizione", "Ord", "Nott", "Piog", "Mal", "Trasf", "Note"]];
+              byCantiere[cant].forEach((r) => {
+                body.push([
+                  r.tipo || "",
+                  r.codice || "",
+                  r.descrizione || "",
+                  String(r.ordinario ?? 0),
+                  String(r.notturno ?? 0),
+                  String(r.pioggia ?? 0),
+                  String(r.malattia ?? 0),
+                  String(r.trasferta ?? 0),
+                  String(r.note_riga ?? ""),
+                ]);
+              });
+
+              content.push({ text: `Cantiere: ${cant}`, margin: [0, 6, 0, 3] });
+              content.push({ table: { headerRows: 1, widths: [40, 55, "*", 30, 30, 30, 30, 35, 130], body }, fontSize: 8, layout: "lightHorizontalLines" });
+            });
         });
 
-      if (Object.keys(grouped).length === 0) {
-        content.push({ text: "Nessun rapportino disponibile", italics: true });
+      if (Object.keys(byDay).length === 0) {
+        content.push({ text: "Nessuna presenza trovata nel backup.", italics: true });
       }
 
       const pm = await ensurePdfMake();
       pm.createPdf({ content, pageOrientation: "landscape", styles: { title: { fontSize: 16, bold: true }, subtitle: { fontSize: 10, color: "#666" } } }).download(`backup_rapportini_${data.generated_at.slice(0, 10)}.pdf`);
+      await loadStorage();
     } catch (e: any) {
       alert(e.message || "Errore backup PDF");
     } finally {
@@ -214,21 +275,19 @@ export default function Admin() {
 
   const runCleanupRapportini = async () => {
     if (cleaning || backuping) return;
-    const proceedWithBackup = window.confirm(
-      "Prima della pulizia dei rapportini vuoi fare un backup? Premi OK per fare backup e continuare. Premi Annulla per fermare la pulizia.",
-    );
+    const proceedWithBackup = window.confirm("Prima della pulizia dei rapportini vuoi fare un backup? Premi OK per fare backup e continuare. Premi Annulla per fermare la pulizia.");
     if (!proceedWithBackup) return;
 
     const backupOk = await runBackupJson();
     if (!backupOk) return;
 
-    const confirmDelete = window.confirm("Confermi la pulizia completa dei rapportini? Questa operazione è irreversibile.");
+    const confirmDelete = window.confirm("Confermi la pulizia completa dei rapportini/presenze? Questa operazione è irreversibile.");
     if (!confirmDelete) return;
 
     setCleaning(true);
     try {
-      const res = await apiPost<{ ok: true; deleted: number }>("/api/admin/cleanup_rapportini", {});
-      alert(`Pulizia completata ✅ Rapportini eliminati: ${res.deleted ?? 0}`);
+      const res = await apiPost<{ ok: true; deleted: number; deleted_rapportini?: number; deleted_day_sheets?: number }>("/api/admin/cleanup_rapportini", {});
+      alert(`Pulizia completata ✅ Totale eliminati: ${res.deleted ?? 0} (rapportini: ${res.deleted_rapportini ?? 0}, day_sheets: ${res.deleted_day_sheets ?? 0})`);
       await loadStorage();
     } catch (e: any) {
       alert(e.message || "Errore pulizia rapportini");
@@ -252,9 +311,14 @@ export default function Admin() {
       {err && <div className="mb-3 rounded-xl border border-red-300 bg-red-50 p-3 text-red-700">{err}</div>}
 
       <div className="mt-4 rounded-2xl border bg-white p-4">
-        <div className="font-semibold">Spazio database</div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="font-semibold">Spazio database</div>
+          <button className="rounded-lg border px-3 py-1 text-sm" onClick={loadStorage} disabled={storageLoading || backuping || cleaning}>
+            {storageLoading ? "Aggiornamento..." : "Aggiorna"}
+          </button>
+        </div>
         <div className="text-sm text-gray-600 mb-3">
-          Stima dello spazio occupato (calcolo approssimato dai dati serializzati). Rapportini: <b>{formatBytes(storage?.rapportini_bytes || 0)}</b>
+          Stima dello spazio occupato (calcolo approssimato dai dati serializzati). Presenze/rapportini: <b>{formatBytes(storage?.rapportini_bytes || 0)}</b>
         </div>
         <div className="h-4 w-full overflow-hidden rounded-full bg-gray-200">
           <div className="h-full bg-brand-orange transition-all" style={{ width: `${storage?.used_percent ?? 0}%` }} />
@@ -344,23 +408,23 @@ export default function Admin() {
 
       <div className="mt-4 rounded-2xl border bg-white p-4">
         <div className="font-semibold">Backup amministratore</div>
-        <div className="text-sm text-gray-600 mb-3">Scarica un backup completo del DB (JSON) e dei rapportini giorno per giorno in formato Excel o PDF.</div>
+        <div className="text-sm text-gray-600 mb-3">Scarica un backup completo del DB e delle presenze divise per giornata e cantiere (JSON, Excel, PDF).</div>
         <div className="grid gap-3 md:grid-cols-3">
           <button className="rounded-xl border px-4 py-2" onClick={runBackupJson} disabled={backuping || cleaning}>
             {backuping ? "Elaborazione..." : "Backup DB (JSON)"}
           </button>
           <button className="rounded-xl bg-brand-orange px-4 py-2 text-white font-bold" onClick={runBackupExcel} disabled={backuping || cleaning}>
-            {backuping ? "Elaborazione..." : "Rapportini Giornalieri (Excel)"}
+            {backuping ? "Elaborazione..." : "Presenze Giorno/Cantiere (Excel)"}
           </button>
           <button className="rounded-xl bg-black px-4 py-2 text-white" onClick={runBackupPdf} disabled={backuping || cleaning}>
-            {backuping ? "Elaborazione..." : "Rapportini Giornalieri (PDF)"}
+            {backuping ? "Elaborazione..." : "Presenze Giorno/Cantiere (PDF)"}
           </button>
         </div>
       </div>
 
       <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
         <div className="font-semibold text-red-700">Pulizia rapportini</div>
-        <div className="text-sm text-red-700/80 mb-3">Elimina tutti i rapportini per liberare spazio. Prima della cancellazione viene richiesto obbligatoriamente il backup.</div>
+        <div className="text-sm text-red-700/80 mb-3">Elimina tutti i rapportini/presenze per liberare spazio. Prima della cancellazione viene richiesto obbligatoriamente il backup.</div>
         <button className="rounded-xl bg-red-600 px-4 py-2 text-white font-bold" onClick={runCleanupRapportini} disabled={cleaning || backuping}>
           {cleaning ? "Pulizia in corso..." : "Pulisci rapportini"}
         </button>
