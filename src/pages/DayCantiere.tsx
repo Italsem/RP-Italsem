@@ -38,7 +38,7 @@ export default function DayCantiere() {
           code: d.codice ?? d.Codice ?? "",
           desc: d.descrizione ?? `${d.cognome ?? ""} ${d.nome ?? ""}`.trim(),
         }))
-        .map((x) => ({ ...x, label: `${x.code} - ${x.desc}`.trim() }))
+        .map((x) => ({ ...x, label: x.desc }))
         .filter((x) => x.code && x.desc),
     [dip]
   );
@@ -50,7 +50,7 @@ export default function DayCantiere() {
           code: m.codice ?? m.Codice ?? "",
           desc: m.descrizione ?? m.Descrizione ?? "",
         }))
-        .map((x) => ({ ...x, label: `${x.code} - ${x.desc}`.trim() }))
+        .map((x) => ({ ...x, label: x.desc }))
         .filter((x) => x.code && x.desc),
     [mezzi]
   );

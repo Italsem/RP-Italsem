@@ -79,7 +79,7 @@ export async function getUser(ctx: any) {
   if (!sid) return null;
 
   const row = await ctx.env.DB.prepare(
-    `SELECT u.id, u.username, u.role, u.is_active
+    `SELECT u.id, u.username, u.role, u.is_active, u.first_name, u.last_name
      FROM sessions s
      JOIN users u ON u.id = s.user_id
      WHERE s.id = ? AND s.expires_at > datetime('now')
@@ -88,7 +88,14 @@ export async function getUser(ctx: any) {
 
   if (!row) return null;
   if (!row.is_active) return null;
-  return row as { id: number; username: string; role: Role; is_active: number };
+  return row as {
+    id: number;
+    username: string;
+    role: Role;
+    is_active: number;
+    first_name?: string;
+    last_name?: string;
+  };
 }
 
 export async function requireAuth(ctx: any) {
