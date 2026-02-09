@@ -3,6 +3,8 @@ import { json, badRequest, requireAuth } from "./_auth";
 type OutRow = {
   data: string;
   cantiere_codice: string;
+  cantiere_desc?: string;
+  cantiere_internal_desc?: string;
   tipo: string;
   risorsa_codice: string;
   risorsa_descrizione: string;
@@ -26,7 +28,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   if (from > to) return badRequest("Invalid range");
 
   const daySheets = await ctx.env.DB.prepare(
-    `SELECT work_date, cantiere_code, payload
+    `SELECT work_date, cantiere_code, cantiere_desc, payload
      FROM day_sheets
      WHERE work_date >= ? AND work_date <= ?
      ORDER BY work_date ASC, cantiere_code ASC`
@@ -36,11 +38,14 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
 
   for (const s of daySheets.results || []) {
     const payload = JSON.parse(s.payload || "{}");
+    const internalDesc = String(payload.internal_desc || "").trim();
     for (const row of payload.rows || []) {
       const day = row.days?.[s.work_date] || {};
       out.push({
         data: s.work_date,
         cantiere_codice: row.cantiere || s.cantiere_code || "",
+        cantiere_desc: s.cantiere_desc || "",
+        cantiere_internal_desc: internalDesc,
         tipo: row.tipo || row.type || "",
         risorsa_codice: row.codice || row.code || "",
         risorsa_descrizione: row.descrizione || row.desc || row.name || "",

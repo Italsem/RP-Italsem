@@ -18,6 +18,8 @@ export default function DashboardDay() {
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
   const [addCode, setAddCode] = useState("");
   const [addDesc, setAddDesc] = useState("");
+  const [addInternalDesc, setAddInternalDesc] = useState("");
+  const [cantiereInput, setCantiereInput] = useState("");
   const [copyFromDate, setCopyFromDate] = useState(todayISO());
   const [copyToDate, setCopyToDate] = useState(todayISO());
 
@@ -25,10 +27,10 @@ export default function DashboardDay() {
     () =>
       cantieri
         .map((c) => ({
-          code: c.Codice ?? c.codice ?? c.code ?? "",
-          desc: c.Descrizione ?? c.descrizione ?? c.desc ?? "",
+          code: String(c.Codice ?? c.codice ?? c.code ?? "").trim(),
+          desc: String(c.Descrizione ?? c.descrizione ?? c.desc ?? "").trim(),
         }))
-        .filter((x) => x.code && x.desc),
+        .filter((x) => x.code),
     [cantieri]
   );
 
@@ -58,18 +60,28 @@ export default function DashboardDay() {
     loadActive();
   }, [date]);
 
-  function onPickCantiere(v: string) {
-    // v = "CODICE - DESCR"
-    const m = v.match(/^(.+?)\s-\s(.*)$/);
+  function resolveCantiere(v: string) {
+    const value = String(v || "").trim();
+    if (!value) return { code: "", desc: "" };
+
+    const exact = cantieriOptions.find((o) => value === `${o.code} - ${o.desc}` || value === o.code || value === o.desc);
+    if (exact) return { code: exact.code, desc: exact.desc || exact.code };
+
+    const m = value.match(/^(.+?)\s-\s(.*)$/);
     if (m) {
-      setAddCode(m[1]);
-      setAddDesc(m[2]);
-    } else {
-      setAddCode("");
-      setAddDesc(v);
+      const code = m[1].trim();
+      const desc = m[2].trim();
+      return { code, desc: desc || code };
     }
+    return { code: value, desc: value };
   }
 
+  function onPickCantiere(v: string) {
+    setCantiereInput(v);
+    const r = resolveCantiere(v);
+    setAddCode(r.code);
+    setAddDesc(r.desc);
+  }
 
   async function duplicateDay() {
     if (!copyFromDate || !copyToDate) return alert("Seleziona entrambe le date");
@@ -84,16 +96,22 @@ export default function DashboardDay() {
   }
 
   async function addCantiereToDay() {
-    if (!addCode || !addDesc) {
+    const resolved = resolveCantiere(cantiereInput);
+    const code = resolved.code || addCode;
+    const desc = resolved.desc || addDesc;
+
+    if (!code) {
       alert("Seleziona un cantiere");
       return;
     }
 
-    // creo uno sheet vuoto (payload standard)
-    const payload = { rows: [] };
-    await apiPost("/api/day/sheet", { work_date: date, cantiere_code: addCode, cantiere_desc: addDesc, payload });
+    const payload = { rows: [], internal_desc: addInternalDesc || "" };
+    await apiPost("/api/day/sheet", { work_date: date, cantiere_code: code, cantiere_desc: desc || code, payload });
+
     setAddCode("");
     setAddDesc("");
+    setAddInternalDesc("");
+    setCantiereInput("");
     await loadActive();
   }
 
@@ -107,15 +125,9 @@ export default function DashboardDay() {
 
         <div className="flex items-center gap-2">
           <div className="text-sm font-semibold">Data</div>
-          <input
-            type="date"
-            className="border rounded-lg px-3 py-2"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+          <input type="date" className="border rounded-lg px-3 py-2" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
       </div>
-
 
       <div className="bg-white border border-black/10 rounded-2xl p-5 space-y-3">
         <div className="font-bold text-lg">Duplica giornata lavorativa</div>
@@ -129,9 +141,7 @@ export default function DashboardDay() {
             <input type="date" className="border rounded-lg px-3 py-2 w-full" value={copyToDate} onChange={(e)=>setCopyToDate(e.target.value)} />
           </div>
           <div className="flex items-end">
-            <button className="px-4 py-2 rounded-lg bg-black text-white font-bold hover:opacity-90 w-full" onClick={duplicateDay}>
-              Duplica giornata
-            </button>
+            <button className="px-4 py-2 rounded-lg bg-black text-white font-bold hover:opacity-90 w-full" onClick={duplicateDay}>Duplica giornata</button>
           </div>
         </div>
       </div>
@@ -140,16 +150,22 @@ export default function DashboardDay() {
         <div className="font-bold text-lg">Aggiungi cantiere alla giornata</div>
 
         <datalist id="dl-cantieri">
-          {cantieriOptions.map((c, i) => (
-            <option key={i} value={`${c.code} - ${c.desc}`} />
-          ))}
+          {cantieriOptions.map((c, i) => <option key={i} value={`${c.code} - ${c.desc || c.code}`} />)}
         </datalist>
 
         <input
           className="border rounded-lg px-3 py-2 w-full"
           placeholder="Cerca cantiere (autocomplete)..."
           list="dl-cantieri"
+          value={cantiereInput}
           onChange={(e) => onPickCantiere(e.target.value)}
+        />
+
+        <input
+          className="border rounded-lg px-3 py-2 w-full"
+          placeholder="Piccola descrizione interna (es. SS36 LAGO DI COMO E DELLO SPLUGA)"
+          value={addInternalDesc}
+          onChange={(e) => setAddInternalDesc(e.target.value)}
         />
 
         <button className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90" onClick={addCantiereToDay}>
@@ -168,6 +184,7 @@ export default function DashboardDay() {
               href={`/day/edit?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}`}
             >
               <div className="font-extrabold">{c.cantiere_code}</div>
+              {c.internal_desc ? <div className="text-sm text-black/80 font-semibold">{c.internal_desc}</div> : null}
               <div className="text-sm text-black/70">{c.cantiere_desc}</div>
               <div className="text-xs text-black/50 mt-1">Aggiornato: {c.updated_at}</div>
             </a>

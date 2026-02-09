@@ -60,7 +60,10 @@ export default function ExportPage() {
 
       const groups: Record<string, any[]> = {};
       for (const r of data.rows || []) {
-        const key = r.cantiere_codice || "(SENZA CANTIERE)";
+        const code = r.cantiere_codice || "(SENZA CANTIERE)";
+        const internal = (r.cantiere_internal_desc || "").trim();
+        const desc = (r.cantiere_desc || "").trim();
+        const key = [code, internal, desc].filter(Boolean).join(" — ");
         groups[key] = groups[key] || [];
         groups[key].push(r);
       }

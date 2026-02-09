@@ -136,6 +136,38 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   const totalCol = 7 + days.length * 6;
   ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 1, c: 0 }, e: { r: 1, c: totalCol } }) };
 
+  const border = {
+    top: { style: "thin", color: { rgb: "000000" } },
+    right: { style: "thin", color: { rgb: "000000" } },
+    bottom: { style: "thin", color: { rgb: "000000" } },
+    left: { style: "thin", color: { rgb: "000000" } },
+  } as any;
+
+  const rowCount = aoa.length;
+  for (let r = 0; r < rowCount; r++) {
+    for (let c = 0; c <= totalCol; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if (!ws[addr]) ws[addr] = { t: "s", v: "" } as any;
+      const isDayTop = r === 0 && c >= 7 && c < totalCol;
+      const isHeader = r <= 1;
+      (ws[addr] as any).s = {
+        border,
+        font: isHeader ? { bold: true, underline: r === 1 } : undefined,
+        alignment: {
+          horizontal: isDayTop ? "center" : "left",
+          vertical: "center",
+        },
+      };
+    }
+  }
+
+  ws["!cols"] = [
+    { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 18 }, { wch: 10 }, { wch: 14 },
+    ...Array(days.length).fill(0).flatMap(() => ([{ wch: 8 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }])),
+    { wch: 10 },
+  ] as any;
+
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Sheet");
 
