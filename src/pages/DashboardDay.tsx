@@ -95,6 +95,17 @@ export default function DashboardDay() {
     }
   }
 
+
+  async function removeCantiereFromDay(code: string) {
+    if (!confirm(`Confermi eliminazione cantiere ${code} dalla giornata ${date}?`)) return;
+    try {
+      await apiPost("/api/day/remove_cantiere", { work_date: date, cantiere_code: code });
+      await loadActive();
+    } catch (e: any) {
+      alert(e?.message || "Errore eliminazione cantiere");
+    }
+  }
+
   async function addCantiereToDay() {
     const resolved = resolveCantiere(cantiereInput);
     const code = resolved.code || addCode;
@@ -178,16 +189,25 @@ export default function DashboardDay() {
 
         <div className="grid gap-3 md:grid-cols-2">
           {active.map((c: any) => (
-            <a
-              key={c.cantiere_code}
-              className="border border-black/10 rounded-xl p-4 hover:bg-black/5 transition block"
-              href={`/day/edit?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}`}
-            >
-              <div className="font-extrabold">{c.cantiere_code}</div>
-              {c.internal_desc ? <div className="text-sm text-black/80 font-semibold">{c.internal_desc}</div> : null}
-              <div className="text-sm text-black/70">{c.cantiere_desc}</div>
-              <div className="text-xs text-black/50 mt-1">Aggiornato: {c.updated_at}</div>
-            </a>
+            <div key={c.cantiere_code} className="border border-black/10 rounded-xl p-4 hover:bg-black/5 transition">
+              <div className="flex items-start justify-between gap-3">
+                <a
+                  className="block flex-1"
+                  href={`/day/edit?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}`}
+                >
+                  <div className="font-extrabold">{c.cantiere_code}</div>
+                  {c.internal_desc ? <div className="text-sm text-black/80 font-semibold">{c.internal_desc}</div> : null}
+                  <div className="text-sm text-black/70">{c.cantiere_desc}</div>
+                  <div className="text-xs text-black/50 mt-1">Aggiornato: {c.updated_at}</div>
+                </a>
+                <button
+                  className="px-3 py-1 rounded-lg border border-red-300 text-red-700 text-xs font-bold hover:bg-red-50"
+                  onClick={() => removeCantiereFromDay(c.cantiere_code)}
+                >
+                  Elimina
+                </button>
+              </div>
+            </div>
           ))}
           {active.length === 0 && <div className="text-sm text-black/60">Nessun cantiere per questa data.</div>}
         </div>

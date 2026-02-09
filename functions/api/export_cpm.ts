@@ -171,7 +171,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Sheet");
 
-  const arr = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+  const arr = XLSX.write(wb, { type: "array", bookType: "xlsx", cellStyles: true }) as ArrayBuffer;
   return new Response(arr, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
