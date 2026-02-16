@@ -6,10 +6,10 @@ type RowType = "DIP" | "MEZZO" | "HOTEL";
 type DayRow = {
   id: string;
   type: RowType;
-  code: string;      // es: Codice dipendente / mezzo / H01/H02
-  desc: string;      // descrizione / nominativo / mezzo
-  note: string;      // note riga
-  ordinario: number; // (giornate) o persone hotel
+  code: string;
+  desc: string;
+  note: string;
+  ordinario: number;
   notturno: number;
   pioggia: number;
   malattia: number;
@@ -20,6 +20,37 @@ type ListsResponse<T> = { ok: true; items: T[] };
 
 function qparam(name: string) {
   return new URLSearchParams(window.location.search).get(name) ?? "";
+}
+
+function toNum(v: any) {
+  if (typeof v === "string") {
+    const n = Number(v.replace(",", "."));
+    return Number.isNaN(n) ? 0 : n;
+  }
+  const n = Number(v ?? 0);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+function normalizeType(v: any): RowType {
+  const t = String(v || "").toUpperCase();
+  if (t === "DIP" || t === "DIPENDENTE") return "DIP";
+  if (t === "MEZZO") return "MEZZO";
+  return "HOTEL";
+}
+
+function normalizeRows(input: any[]): DayRow[] {
+  return (Array.isArray(input) ? input : []).map((r) => ({
+    id: String(r?.id || crypto.randomUUID()),
+    type: normalizeType(r?.type),
+    code: String(r?.code ?? ""),
+    desc: String(r?.desc ?? r?.name ?? ""),
+    note: String(r?.note ?? ""),
+    ordinario: toNum(r?.ordinario),
+    notturno: toNum(r?.notturno),
+    pioggia: toNum(r?.pioggia),
+    malattia: toNum(r?.malattia),
+    trasferta: toNum(r?.trasferta),
+  }));
 }
 
 export default function DayCantiere() {
@@ -65,7 +96,6 @@ export default function DayCantiere() {
         setDip(Array.isArray(dRes?.items) ? dRes.items : []);
         setMezzi(Array.isArray(mRes?.items) ? mRes.items : []);
       } catch (e: any) {
-        // Non facciamo crashare tutta la pagina se l'API risponde male
         console.error(e);
         setDip([]);
         setMezzi([]);
@@ -74,18 +104,21 @@ export default function DayCantiere() {
   }, []);
 
   async function load() {
-    const r = await apiGet<any>(
-      `/api/day/sheet?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(cantiere_code)}`
-    );
-    setDesc(r.cantiere_desc);
-    setRows(r.payload?.rows ?? []);
+    try {
+      const r = await apiGet<any>(`/api/day/sheet?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(cantiere_code)}`);
+      setDesc(String(r?.cantiere_desc || cantiere_code));
+      setRows(normalizeRows(r?.payload?.rows || []));
+    } catch (e: any) {
+      // Se la scheda non esiste ancora o errore, lasciamo pagina compilabile
+      setDesc(cantiere_code);
+      setRows([]);
+    }
   }
 
   useEffect(() => {
     if (!date || !cantiere_code) return;
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [date, cantiere_code]);
 
   function addRow(type: RowType) {
     setRows((prev) => [
@@ -114,14 +147,10 @@ export default function DayCantiere() {
   }
 
   async function save() {
-    // regole speciali:
-    // - DIP: ordinario=giornate (0.33 ecc)
-    // - MEZZO: se usato, ordinario=1; note deve includere AUTISTA
-    // - HOTEL: code=H01/H02; ordinario=numero persone; note = nome hotel
     await apiPost("/api/day/sheet", {
       work_date: date,
       cantiere_code,
-      cantiere_desc,
+      cantiere_desc: cantiere_desc || cantiere_code,
       payload: { rows },
     });
     alert("Salvato ✅");
@@ -140,32 +169,20 @@ export default function DayCantiere() {
           <button className="px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={() => { const ret = new URLSearchParams(window.location.search).get("returnDate") || date; window.location.href = `/dashboard?date=${encodeURIComponent(ret)}`; }}>
             Indietro
           </button>
-          <button
-            className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90"
-            onClick={save}
-          >
+          <button className="px-4 py-2 rounded-lg bg-brand-orange text-white font-bold hover:opacity-90" onClick={save}>
             Salva
           </button>
         </div>
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <button
-          className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold"
-          onClick={() => addRow("DIP")}
-        >
+        <button className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold" onClick={() => addRow("DIP")}>
           + Operaio
         </button>
-        <button
-          className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold"
-          onClick={() => addRow("MEZZO")}
-        >
+        <button className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold" onClick={() => addRow("MEZZO")}>
           + Mezzo
         </button>
-        <button
-          className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold"
-          onClick={() => addRow("HOTEL")}
-        >
+        <button className="px-4 py-2 rounded-lg border border-black/10 bg-white font-bold" onClick={() => addRow("HOTEL")}>
           + Hotel
         </button>
       </div>
@@ -194,12 +211,7 @@ export default function DayCantiere() {
               <tr key={r.id} className="border-b border-black/5 align-top">
                 <td className="py-2 font-extrabold">{r.type}</td>
                 <td>
-                  <input
-                    className="border rounded px-2 py-1 w-24"
-                    value={r.code}
-                    onChange={(e) => updateRow(r.id, { code: e.target.value })}
-                    placeholder={r.type === "HOTEL" ? "H01/H02" : ""}
-                  />
+                  <input className="border rounded px-2 py-1 w-24" value={r.code} onChange={(e) => updateRow(r.id, { code: e.target.value })} placeholder={r.type === "HOTEL" ? "H01/H02" : ""} />
                 </td>
                 <td>
                   <input
@@ -218,12 +230,7 @@ export default function DayCantiere() {
                   />
                 </td>
                 <td>
-                  <input
-                    className="border rounded px-2 py-1 w-72"
-                    value={r.note}
-                    onChange={(e) => updateRow(r.id, { note: e.target.value })}
-                    placeholder={r.type === "MEZZO" ? "AUTISTA: Nome" : r.type === "HOTEL" ? "Nome hotel" : ""}
-                  />
+                  <input className="border rounded px-2 py-1 w-72" value={r.note} onChange={(e) => updateRow(r.id, { note: e.target.value })} placeholder={r.type === "MEZZO" ? "AUTISTA: Nome" : r.type === "HOTEL" ? "Nome hotel" : ""} />
                 </td>
                 <td><Num v={r.ordinario} onChange={(v) => updateRow(r.id, { ordinario: v })} /></td>
                 <td><Num v={r.notturno} onChange={(v) => updateRow(r.id, { notturno: v })} /></td>
@@ -231,11 +238,7 @@ export default function DayCantiere() {
                 <td><Num v={r.malattia} onChange={(v) => updateRow(r.id, { malattia: v })} /></td>
                 <td><Num v={r.trasferta} onChange={(v) => updateRow(r.id, { trasferta: v })} /></td>
                 <td className="text-center">
-                  <button
-                    className="rounded-full border border-red-300 px-2 py-0.5 text-xs font-bold text-red-600 hover:bg-red-50"
-                    onClick={() => removeRow(r.id)}
-                    title="Elimina riga"
-                  >
+                  <button className="rounded-full border border-red-300 px-2 py-0.5 text-xs font-bold text-red-600 hover:bg-red-50" onClick={() => removeRow(r.id)} title="Elimina riga">
                     ×
                   </button>
                 </td>
