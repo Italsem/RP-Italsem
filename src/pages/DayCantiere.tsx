@@ -247,7 +247,7 @@ export default function DayCantiere() {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={10} className="py-4 text-black/60">
-                  Nessuna riga. Aggiungi Operaio/Mezzo/Hotel.
+                  Nessuna riga. Aggiungi Operaio/Mezzo/Hotel/Attrezzatura.
                 </td>
               </tr>
             )}
@@ -257,7 +257,7 @@ export default function DayCantiere() {
 
       <div className="text-sm text-black/60">
         Regole: <b>Ordinario</b> per operai è “giornate” (0.33 ecc). Mezzo: se usato metti <b>Ordinario=1</b> e in
-        note scrivi <b>AUTISTA: ...</b>. Hotel: <b>code H01/H02</b>, ordinario = persone, note = nome hotel.
+        note scrivi <b>AUTISTA: ...</b>. Hotel: <b>code H01/H02</b>, ordinario = persone, note = nome hotel. Attrezzature: usa la riga <b>ATTREZZATURA</b> con descrizione da lista importata in Admin.
       </div>
     </div>
   );

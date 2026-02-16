@@ -18,6 +18,21 @@ function daysInMonth(month: string) {
   return out;
 }
 
+function addDays(iso: string, plus: number) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + plus);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function daysFromStart(startDate: string, length: number) {
+  const out: string[] = [];
+  for (let i = 0; i < length; i++) out.push(addDays(startDate, i));
+  return out;
+}
+
 function dayLabel(iso: string) {
   const d = new Date(`${iso}T00:00:00`);
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" });
@@ -51,9 +66,22 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   if (!u) return new Response("Unauthorized", { status: 401 });
 
   const month = new URL(ctx.request.url).searchParams.get("month");
-  if (!month) return new Response("Missing month", { status: 400 });
+  const from = new URL(ctx.request.url).searchParams.get("from");
+  const period = (new URL(ctx.request.url).searchParams.get("period") || "month").toLowerCase();
 
-  const days = daysInMonth(month);
+  let days: string[] = [];
+  let fileSuffix = "";
+
+  if (period === "week") {
+    if (!from) return new Response("Missing from for week period", { status: 400 });
+    days = daysFromStart(from, 7);
+    fileSuffix = `week_${from}`;
+  } else {
+    if (!month) return new Response("Missing month", { status: 400 });
+    days = daysInMonth(month);
+    fileSuffix = month;
+  }
+
   const firstDay = days[0];
   const lastDay = days[days.length - 1];
 
@@ -82,6 +110,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   }
 
   if (acc.size === 0) {
+    const month = firstDay.slice(0, 7);
     const rapports = await ctx.env.DB.prepare("SELECT payload FROM rapportini WHERE month=?").bind(month).all<any>();
     const items = (rapports.results ?? []).map((x: any) => JSON.parse(x.payload));
     for (const doc of items) {
@@ -175,7 +204,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async (ctx) => {
   return new Response(arr, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="export_cpm_${month}.xlsx"`,
+      "Content-Disposition": `attachment; filename="export_cpm_${fileSuffix}.xlsx"`,
     },
   });
 };

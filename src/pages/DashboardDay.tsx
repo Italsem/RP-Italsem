@@ -107,6 +107,24 @@ export default function DashboardDay() {
   }
 
 
+
+
+  async function duplicateSingleCantiere(code: string) {
+    if (!copyFromDate || !copyToDate) return alert("Seleziona entrambe le date");
+    if (copyFromDate === copyToDate) return alert("La data sorgente e destinazione devono essere diverse");
+    try {
+      const r = await apiPost<{ ok: boolean; copied: number }>("/api/day/duplicate", {
+        from_date: copyFromDate,
+        to_date: copyToDate,
+        cantiere_code: code,
+      });
+      alert(`Cantiere ${code} copiato ✅ Record copiati: ${r.copied ?? 0}`);
+      if (copyToDate === date) await loadActive();
+    } catch (e: any) {
+      alert(e?.message || "Errore copia cantiere");
+    }
+  }
+
   async function removeCantiereFromDay(code: string) {
     if (!confirm(`Confermi eliminazione cantiere ${code} dalla giornata ${date}?`)) return;
     try {
@@ -149,6 +167,7 @@ export default function DashboardDay() {
           <div className="text-sm font-semibold">Data</div>
           <input type="date" className="border rounded-lg px-3 py-2" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
+        <div className="text-xs text-black/60">Per copiare un singolo cantiere usa il pulsante “Copia cantiere” nella lista sotto.</div>
       </div>
 
       <div className="bg-white border border-black/10 rounded-2xl p-5 space-y-3">
@@ -166,6 +185,7 @@ export default function DashboardDay() {
             <button className="px-4 py-2 rounded-lg bg-black text-white font-bold hover:opacity-90 w-full" onClick={duplicateDay}>Duplica giornata</button>
           </div>
         </div>
+        <div className="text-xs text-black/60">Per copiare un singolo cantiere usa il pulsante “Copia cantiere” nella lista sotto.</div>
       </div>
 
       <div className="bg-white border border-black/10 rounded-2xl p-5 space-y-3">
@@ -211,12 +231,21 @@ export default function DashboardDay() {
                   <div className="text-sm text-black/70">{c.cantiere_desc}</div>
                   <div className="text-xs text-black/50 mt-1">Aggiornato: {c.updated_at}</div>
                 </a>
-                <button
-                  className="px-3 py-1 rounded-lg border border-red-300 text-red-700 text-xs font-bold hover:bg-red-50"
-                  onClick={() => removeCantiereFromDay(c.cantiere_code)}
-                >
-                  Elimina
-                </button>
+                <div className="flex flex-col gap-2">
+                  <button
+                    className="px-3 py-1 rounded-lg border border-black/20 text-xs font-bold hover:bg-black/5"
+                    onClick={() => duplicateSingleCantiere(c.cantiere_code)}
+                    title={`Copia ${c.cantiere_code} da ${copyFromDate} a ${copyToDate}`}
+                  >
+                    Copia cantiere
+                  </button>
+                  <button
+                    className="px-3 py-1 rounded-lg border border-red-300 text-red-700 text-xs font-bold hover:bg-red-50"
+                    onClick={() => removeCantiereFromDay(c.cantiere_code)}
+                  >
+                    Elimina
+                  </button>
+                </div>
               </div>
             </div>
           ))}
