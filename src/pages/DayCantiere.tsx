@@ -109,6 +109,10 @@ export default function DayCantiere() {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
+  function removeRow(id: string) {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+  }
+
   async function save() {
     // regole speciali:
     // - DIP: ordinario=giornate (0.33 ecc)
@@ -133,7 +137,7 @@ export default function DayCantiere() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={() => history.back()}>
+          <button className="px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={() => { const ret = new URLSearchParams(window.location.search).get("returnDate") || date; window.location.href = `/dashboard?date=${encodeURIComponent(ret)}`; }}>
             Indietro
           </button>
           <button
@@ -182,6 +186,7 @@ export default function DayCantiere() {
               <th>Pioggia</th>
               <th>Malattia</th>
               <th>Trasferta</th>
+              <th className="text-center">X</th>
             </tr>
           </thead>
           <tbody>
@@ -225,11 +230,20 @@ export default function DayCantiere() {
                 <td><Num v={r.pioggia} onChange={(v) => updateRow(r.id, { pioggia: v })} /></td>
                 <td><Num v={r.malattia} onChange={(v) => updateRow(r.id, { malattia: v })} /></td>
                 <td><Num v={r.trasferta} onChange={(v) => updateRow(r.id, { trasferta: v })} /></td>
+                <td className="text-center">
+                  <button
+                    className="rounded-full border border-red-300 px-2 py-0.5 text-xs font-bold text-red-600 hover:bg-red-50"
+                    onClick={() => removeRow(r.id)}
+                    title="Elimina riga"
+                  >
+                    ×
+                  </button>
+                </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-4 text-black/60">
+                <td colSpan={10} className="py-4 text-black/60">
                   Nessuna riga. Aggiungi Operaio/Mezzo/Hotel.
                 </td>
               </tr>
@@ -247,11 +261,39 @@ export default function DayCantiere() {
 }
 
 function Num({ v, onChange }: { v: number; onChange: (n: number) => void }) {
+  const [draft, setDraft] = useState(String(v ?? 0));
+
+  useEffect(() => {
+    setDraft(String(v ?? 0));
+  }, [v]);
+
+  const commit = (raw: string) => {
+    const normalized = String(raw ?? "").replace(",", ".").trim();
+    if (!normalized) {
+      onChange(0);
+      setDraft("0");
+      return;
+    }
+    const parsed = Number(normalized);
+    if (!Number.isNaN(parsed)) {
+      onChange(parsed);
+      setDraft(String(raw));
+    }
+  };
+
   return (
     <input
       className="border rounded px-2 py-1 w-20"
-      value={String(v ?? 0)}
-      onChange={(e) => onChange(Number(String(e.target.value).replace(",", ".")) || 0)}
+      inputMode="decimal"
+      value={draft}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (!/^[-]?[0-9]*([.,][0-9]*)?$/.test(raw) && raw !== "") return;
+        setDraft(raw);
+        const parsed = Number(raw.replace(",", "."));
+        if (!Number.isNaN(parsed)) onChange(parsed);
+      }}
+      onBlur={() => commit(draft)}
     />
   );
 }

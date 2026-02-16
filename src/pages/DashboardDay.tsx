@@ -9,11 +9,16 @@ function todayISO() {
   return `${y}-${m}-${dd}`;
 }
 
+function initialDateFromUrl() {
+  const q = new URLSearchParams(window.location.search).get("date");
+  return q || todayISO();
+}
+
 type Cantiere = any;
 type ListsResponse<T> = { ok: true; items: T[] };
 
 export default function DashboardDay() {
-  const [date, setDate] = useState(todayISO());
+  const [date, setDate] = useState(initialDateFromUrl());
   const [active, setActive] = useState<any[]>([]);
   const [cantieri, setCantieri] = useState<Cantiere[]>([]);
   const [addCode, setAddCode] = useState("");
@@ -58,6 +63,12 @@ export default function DashboardDay() {
 
   useEffect(() => {
     loadActive();
+  }, [date]);
+
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    u.searchParams.set("date", date);
+    window.history.replaceState(null, "", `${u.pathname}?${u.searchParams.toString()}`);
   }, [date]);
 
   function resolveCantiere(v: string) {
@@ -193,7 +204,7 @@ export default function DashboardDay() {
               <div className="flex items-start justify-between gap-3">
                 <a
                   className="block flex-1"
-                  href={`/day/edit?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}`}
+                  href={`/day/edit?date=${encodeURIComponent(date)}&cantiere_code=${encodeURIComponent(c.cantiere_code)}&returnDate=${encodeURIComponent(date)}`}
                 >
                   <div className="font-extrabold">{c.cantiere_code}</div>
                   {c.internal_desc ? <div className="text-sm text-black/80 font-semibold">{c.internal_desc}</div> : null}
