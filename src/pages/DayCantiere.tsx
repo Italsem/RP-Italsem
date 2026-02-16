@@ -137,7 +137,7 @@ export default function DayCantiere() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={() => history.back()}>
+          <button className="px-4 py-2 rounded-lg border border-black/10 font-bold" onClick={() => { const ret = new URLSearchParams(window.location.search).get("returnDate") || date; window.location.href = `/dashboard?date=${encodeURIComponent(ret)}`; }}>
             Indietro
           </button>
           <button
@@ -261,11 +261,39 @@ export default function DayCantiere() {
 }
 
 function Num({ v, onChange }: { v: number; onChange: (n: number) => void }) {
+  const [draft, setDraft] = useState(String(v ?? 0));
+
+  useEffect(() => {
+    setDraft(String(v ?? 0));
+  }, [v]);
+
+  const commit = (raw: string) => {
+    const normalized = String(raw ?? "").replace(",", ".").trim();
+    if (!normalized) {
+      onChange(0);
+      setDraft("0");
+      return;
+    }
+    const parsed = Number(normalized);
+    if (!Number.isNaN(parsed)) {
+      onChange(parsed);
+      setDraft(String(raw));
+    }
+  };
+
   return (
     <input
       className="border rounded px-2 py-1 w-20"
-      value={String(v ?? 0)}
-      onChange={(e) => onChange(Number(String(e.target.value).replace(",", ".")) || 0)}
+      inputMode="decimal"
+      value={draft}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (!/^[-]?[0-9]*([.,][0-9]*)?$/.test(raw) && raw !== "") return;
+        setDraft(raw);
+        const parsed = Number(raw.replace(",", "."));
+        if (!Number.isNaN(parsed)) onChange(parsed);
+      }}
+      onBlur={() => commit(draft)}
     />
   );
 }

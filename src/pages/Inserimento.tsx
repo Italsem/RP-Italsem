@@ -165,11 +165,9 @@ export default function Inserimento() {
 
                 {days.map(d => (
                   <td key={d} className="px-2">
-                    <input
-                      className="border border-black/10 rounded px-2 py-1 w-16"
-                      value={row.days?.[d]?.ordinario ?? ""}
-                      onChange={(e)=>setDay(row.id,d,{ordinario: Number(e.target.value.replace(",", ".")) || 0})}
-                      placeholder="0"
+                    <DecimalInput
+                      value={row.days?.[d]?.ordinario ?? 0}
+                      onChange={(n)=>setDay(row.id,d,{ordinario: n})}
                     />
                     <input
                       className="border border-black/10 rounded px-2 py-1 w-28 mt-1"
@@ -198,5 +196,45 @@ export default function Inserimento() {
         Regole: <b>1</b> = 1 giornata (puoi usare <b>0,33</b>). Mezzo: se usato metti <b>ordinario=1</b> e nelle note giorno l’autista. Hotel: ordinario = persone, note giorno = nome hotel, codice H01/H02.
       </div>
     </div>
+  );
+}
+
+
+function DecimalInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [draft, setDraft] = useState(String(value ?? 0));
+
+  useEffect(() => {
+    setDraft(String(value ?? 0));
+  }, [value]);
+
+  const commit = () => {
+    const normalized = String(draft || "").replace(",", ".").trim();
+    if (!normalized) {
+      onChange(0);
+      setDraft("0");
+      return;
+    }
+    const parsed = Number(normalized);
+    if (!Number.isNaN(parsed)) {
+      onChange(parsed);
+      setDraft(String(draft));
+    }
+  };
+
+  return (
+    <input
+      className="border border-black/10 rounded px-2 py-1 w-16"
+      inputMode="decimal"
+      value={draft}
+      onChange={(e) => {
+        const raw = e.target.value;
+        if (!/^[-]?[0-9]*([.,][0-9]*)?$/.test(raw) && raw !== "") return;
+        setDraft(raw);
+        const parsed = Number(raw.replace(",", "."));
+        if (!Number.isNaN(parsed)) onChange(parsed);
+      }}
+      onBlur={commit}
+      placeholder="0"
+    />
   );
 }
