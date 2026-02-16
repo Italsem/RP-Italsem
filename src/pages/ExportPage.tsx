@@ -44,9 +44,11 @@ export default function ExportPage() {
   const [from, setFrom] = useState(todayISO());
   const [to, setTo] = useState(todayISO());
   const [month, setMonth] = useState(monthNow());
+  const [weekFrom, setWeekFrom] = useState(todayISO());
   const [loading, setLoading] = useState(false);
 
   const exportCpmUrl = useMemo(() => `/api/export_cpm?month=${encodeURIComponent(month)}`, [month]);
+  const exportCpmWeekUrl = useMemo(() => `/api/export_cpm?period=week&from=${encodeURIComponent(weekFrom)}`, [weekFrom]);
 
   const exportRangePdf = async () => {
     if (!from || !to) return alert("Seleziona un range valido");
@@ -162,10 +164,23 @@ export default function ExportPage() {
         </div>
         <div className="md:col-span-2 flex items-end">
           <a className="w-full rounded-xl border px-4 py-2 text-center" href={exportCpmUrl} target="_blank" rel="noreferrer">
-            Export CPM
+            Export CPM Mensile
           </a>
         </div>
       </div>
+
+      <div className="mt-4 grid gap-3 rounded-2xl border bg-white p-4 md:grid-cols-3">
+        <div>
+          <div className="mb-1 text-sm text-gray-600">Partenza settimana CPM</div>
+          <input className="w-full rounded-xl border px-3 py-2" type="date" value={weekFrom} onChange={(e) => setWeekFrom(e.target.value)} />
+        </div>
+        <div className="md:col-span-2 flex items-end">
+          <a className="w-full rounded-xl border px-4 py-2 text-center" href={exportCpmWeekUrl} target="_blank" rel="noreferrer">
+            Export CPM Settimanale (7 giorni)
+          </a>
+        </div>
+      </div>
+
     </div>
   );
 }
