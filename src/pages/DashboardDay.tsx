@@ -16,6 +16,18 @@ function initialDateFromUrl() {
 
 type Cantiere = any;
 type ListsResponse<T> = { ok: true; items: T[] };
+type OperaiTotals = {
+  ordinario: number;
+  trasferta: number;
+  notturno: number;
+  malattia: number;
+  pioggia: number;
+};
+
+function fmt(v: number) {
+  if (!Number.isFinite(v)) return "0";
+  return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
+}
 
 export default function DashboardDay() {
   const [date, setDate] = useState(initialDateFromUrl());
@@ -27,6 +39,21 @@ export default function DashboardDay() {
   const [cantiereInput, setCantiereInput] = useState("");
   const [copyFromDate, setCopyFromDate] = useState(todayISO());
   const [copyToDate, setCopyToDate] = useState(todayISO());
+
+  const dayTotals = useMemo<OperaiTotals>(() => {
+    return active.reduce(
+      (acc: OperaiTotals, c: any) => {
+        const t = c?.operai_totals || {};
+        acc.ordinario += Number(t.ordinario || 0);
+        acc.trasferta += Number(t.trasferta || 0);
+        acc.notturno += Number(t.notturno || 0);
+        acc.malattia += Number(t.malattia || 0);
+        acc.pioggia += Number(t.pioggia || 0);
+        return acc;
+      },
+      { ordinario: 0, trasferta: 0, notturno: 0, malattia: 0, pioggia: 0 }
+    );
+  }, [active]);
 
   const cantieriOptions = useMemo(
     () =>
@@ -216,6 +243,13 @@ export default function DashboardDay() {
       </div>
 
       <div className="bg-white border border-black/10 rounded-2xl p-5">
+        <div className="mb-4 rounded-xl border border-brand-orange/30 bg-brand-orange/5 px-4 py-3">
+          <div className="text-xs font-semibold text-brand-orange">TOTALE PRESENZE CANTIERI ({date}) — SOLO OPERAI</div>
+          <div className="mt-1 text-sm font-bold text-black/80">
+            {fmt(dayTotals.ordinario)} Ordinario · {fmt(dayTotals.trasferta)} Trasferte · {fmt(dayTotals.notturno)} Notturni · {fmt(dayTotals.malattia)} Malattia · {fmt(dayTotals.pioggia)} Pioggia
+          </div>
+        </div>
+
         <div className="font-bold text-lg mb-3">Cantieri attivi ({active.length})</div>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -229,6 +263,9 @@ export default function DashboardDay() {
                   <div className="font-extrabold">{c.cantiere_code}</div>
                   {c.internal_desc ? <div className="text-sm text-black/80 font-semibold">{c.internal_desc}</div> : null}
                   <div className="text-sm text-black/70">{c.cantiere_desc}</div>
+                  <div className="text-xs font-semibold text-black/70 mt-1">
+                    Operai: {fmt(c?.operai_totals?.ordinario || 0)} Ordinario · {fmt(c?.operai_totals?.trasferta || 0)} Trasferte · {fmt(c?.operai_totals?.notturno || 0)} Notturni · {fmt(c?.operai_totals?.malattia || 0)} Malattia · {fmt(c?.operai_totals?.pioggia || 0)} Pioggia
+                  </div>
                   <div className="text-xs text-black/50 mt-1">Aggiornato: {c.updated_at}</div>
                 </a>
                 <div className="flex flex-col gap-2">
